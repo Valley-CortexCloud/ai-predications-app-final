@@ -82,14 +82,14 @@ def normalize_df_index(df: pd.DataFrame) -> pd.DataFrame:
 
 def find_cache_for_ticker(ticker: str, cache_dir: str) -> Optional[Path]:
     p = Path(cache_dir)
-    cand = list(p.glob(f"{ticker}_*10y_*.parquet")) + list(p.glob(f"{ticker}_*.parquet"))
+    cand = list(p.glob(f"{ticker}_*2y_*.parquet")) + list(p.glob(f"{ticker}_*.parquet"))
     cand = [f for f in cand if not f.name.endswith("_features.parquet")]
     if cand:
         return sorted(cand)[0]
     
     etf_dir = p.parent / '_etf_cache'
     if etf_dir.exists():
-        cand = list(etf_dir.glob(f"{ticker}_*10y_*.parquet")) + list(etf_dir.glob(f"{ticker}_*.parquet"))
+        cand = list(etf_dir.glob(f"{ticker}_*2y_*.parquet")) + list(etf_dir.glob(f"{ticker}_*.parquet"))
         cand = [f for f in cand if not f.name.endswith("_features.parquet")]
         if cand:
             return sorted(cand)[0]
