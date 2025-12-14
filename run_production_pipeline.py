@@ -39,7 +39,7 @@ def main():
         run(f"python3 scripts/build_earnings_calendar.py --start 2014-11-01 --out data/earnings.csv --verbose")
 
     # 4. Build today's feature dataset (latest date only)
-    run(f"python3 scripts/build_labels_final.py --cache-dir {CACHE_DIR} --output {DATASETS_DIR}/today_features.parquet --earnings-file data/earnings.csv")
+    run(f"python3 scripts/build_labels_final.py --cache-dir {TICKER_CACHE_DIR} --output {DATASETS_DIR}/today_features.parquet --earnings-file data/earnings.csv")
 
     # Load today's dataset to check VIX
     today_features_path = DATASETS_DIR / "today_features.parquet"
