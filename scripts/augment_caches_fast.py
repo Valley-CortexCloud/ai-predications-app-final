@@ -95,7 +95,7 @@ def process_ticker_file(file_path: Path, overwrite: bool = False,
         
         if sector:
             etf_symbol = get_sector_etf_symbol(sector)
-            sector_df = fetch_sector_etf_history(etf_symbol, period='10y', max_retries=2)
+            sector_df = fetch_sector_etf_history(etf_symbol, period='2y', max_retries=2)
             sector_df = _normalize_daily_index(sector_df)
         
         # Normalize SPY once per call (already pre-normalized in main, but safe to reapply)
@@ -170,9 +170,9 @@ def main():
         print(f"Error: Cache directory {cache_path} does not exist")
         return 1
     
-    # Find files matching pattern *_10y_*.parquet (but not *_features.parquet)
+    # Find files matching pattern *_2y_*.parquet (but not *_features.parquet)
     all_files = sorted([
-        f for f in cache_path.glob('*_10y_*.parquet')
+        f for f in cache_path.glob('*_2y_*.parquet')
         if '_features' not in f.stem
     ])
     
@@ -193,7 +193,7 @@ def main():
     
     # Fetch SPY data once (shared across all tickers)
     print("\nFetching SPY data for market-relative features...")
-    spy_df = fetch_spy_history(period='10y')
+    spy_df = fetch_spy_history(period='2y')
     spy_df = _normalize_daily_index(spy_df)
     if spy_df is None:
         print("Warning: Could not fetch SPY data, skipping market-relative features")
