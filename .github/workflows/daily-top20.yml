@@ -17,13 +17,22 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Maximize disk space
-        uses: easimon/maximize-build-space@master
-        with:
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
+      - name: Free up disk space (manual - safe and effective)
+        run: |
+          echo "Before cleanup:"
+          df -h /
+
+          sudo rm -rf /usr/share/dotnet      # ~10-17GB
+          sudo rm -rf /usr/local/lib/android # ~10-15GB
+          sudo rm -rf /opt/ghc               # ~3-5GB
+          sudo rm -rf /opt/hostedtoolcache/CodeQL  # ~5GB
+          sudo rm -rf /usr/local/.ghcup      # Haskell extras
+          sudo docker image prune -a -f      # If any Docker images (optional, ~3GB)
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+
+          echo "After cleanup:"
+          df -h /
           
       - name: Checkout repo 
         uses: actions/checkout@v4
