@@ -48,8 +48,12 @@ import time
 
 # Project root to import CACHE_DIR
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from data_paths import CACHE_DIR  # points to your data_cache root
+from pathlib import Path
 
+# ADD at top
+ROOT = Path(__file__).parent.parent
+TICKER_CACHE_DIR = ROOT / "data_cache" / "10y_ticker_features"
+ETF_CACHE_DIR = ROOT / "data_cache" / "_etf_cache"
 # -------- Utilities --------
 
 # Add near the other utils (only once; skip if you already added them)
