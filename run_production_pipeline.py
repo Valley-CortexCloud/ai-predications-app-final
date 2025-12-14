@@ -26,13 +26,13 @@ def main():
     print(f"=== Daily Top 20 Pipeline - {today} ===")
 
     # 1. Fetch only latest data for universe + benchmarks (incremental)
-    run(f"python3 scripts/fetch_history_bulletproof.py --universe sp500 --period 2y --out-dir {TICKER_CACHE_DIR} --max-workers 8")
-    run(f"python3 scripts/fetch_history_bulletproof.py --universe nasdaq --period 2y --out-dir {TICKER_CACHE_DIR} --max-workers 8")
-    run(f'python3 scripts/fetch_history_bulletproof.py --tickers "SPY,^VIX,TLT,^BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" --period 2y --out-dir {ETF_CACHE_DIR}')
+    run(f"python3 scripts/fetch_history_bulletproof.py --universe sp500 --period 2y --out-dir {TICKER_CACHE_DIR} --max-workers 1")
+    run(f"python3 scripts/fetch_history_bulletproof.py --universe nasdaq --period 2y --out-dir {TICKER_CACHE_DIR} --max-workers 1")
+    run(f'python3 scripts/fetch_history_bulletproof.py --tickers "SPY,^VIX,TLT,BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" --period 2y --out-dir {ETF_CACHE_DIR}')
     
     # 2. Augment + enhance ONLY new/changed tickers (fast)
-    run(f"python3 scripts/augment_caches_fast.py --processes 6 --cache-dir {TICKER_CACHE_DIR} --overwrite")
-    run(f"python3 scripts/enhance_features_final.py --processes 4 --cache-dir {TICKER_CACHE_DIR} --overwrite")
+    run(f"python3 scripts/augment_caches_fast.py --processes 2 --cache-dir {TICKER_CACHE_DIR} --overwrite")
+    run(f"python3 scripts/enhance_features_final.py --processes 2 --cache-dir {TICKER_CACHE_DIR} --overwrite")
 
     # 3. Earnings calendar (weekly is fine — run only on Mondays)
     if datetime.now().weekday() == 0:  # Monday
