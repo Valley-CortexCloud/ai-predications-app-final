@@ -124,17 +124,17 @@ def find_cache_for_ticker(ticker: str, cache_dir: str) -> Optional[Path]:
     p = Path(cache_dir)
     
     # Try main cache directory first (for stock files)
-    cand = list(p.glob(f"{ticker}_*10y_*.parquet")) + list(p.glob(f"{ticker}_*.parquet"))
+    cand = list(p.glob(f"{ticker}_*2y_*.parquet")) + list(p.glob(f"{ticker}_*.parquet"))
     cand = [f for f in cand if not f.name.endswith("_features.parquet") and "_features_enhanced" not in f.name]
     if cand:
         return sorted(cand)[0]
     
-    # Try _etf_cache in PARENT directory (go up one level if we're in 10y_ticker_features)
-    cache_root = p.parent if p.name == "10y_ticker_features" else p
+    # Try _etf_cache in PARENT directory (go up one level if we're in 2y_ticker_features)
+    cache_root = p.parent if p.name == "2y_ticker_features" else p
     etf_dir = cache_root / '_etf_cache'
     
     if etf_dir.exists():
-        cand = list(etf_dir.glob(f"{ticker}_*10y_*.parquet")) + list(etf_dir.glob(f"{ticker}_*.parquet"))
+        cand = list(etf_dir.glob(f"{ticker}_*2y_*.parquet")) + list(etf_dir.glob(f"{ticker}_*.parquet"))
         cand = [f for f in cand if not f.name.endswith("_features.parquet") and "_features_enhanced" not in f.name]
         if cand:
             return sorted(cand)[0]
@@ -148,7 +148,7 @@ def find_cache_for_ticker(ticker: str, cache_dir: str) -> Optional[Path]:
         for search_dir in [p, etf_dir]:
             if search_dir.exists():
                 # Use rglob to search recursively
-                cand = list(search_dir.rglob(f"*{norm}*10y*.parquet"))
+                cand = list(search_dir.rglob(f"*{norm}*2y*.parquet"))
                 cand = [f for f in cand if not f.name.endswith("_features.parquet") and "_features_enhanced" not in f.name]
                 if cand:
                     return sorted(cand)[0]
@@ -165,7 +165,7 @@ def list_training_files(limit: int, tickers: Optional[List[str]], cache_dir: str
             if fp:
                 files.append(fp)
     else:
-        files = list(root.glob("*_10y_*.parquet")) + list(root.glob("*.parquet"))
+        files = list(root.glob("*_2y_*.parquet")) + list(root.glob("*.parquet"))
         files = [f for f in files if f.is_file() and not f.name.endswith("_features.parquet") and "_features_enhanced" not in f.name]
         files = [f for f in files if not f.name.startswith("SPY_")]
     
@@ -458,7 +458,7 @@ def main():
             ticker_upper = ticker.upper()
             
             # Try enhanced version first (most common case)
-            feat_fp = fp.parent / f"{ticker_upper}_10y_raw_features_enhanced.parquet"
+            feat_fp = fp.parent / f"{ticker_upper}_2y_raw_features_enhanced.parquet"
             
             if not feat_fp.exists():
                 # Fallback: glob for any enhanced features file for this ticker
@@ -467,7 +467,7 @@ def main():
                     feat_fp = sorted(candidates)[0]
                 else:
                     # Fallback to non-enhanced
-                    feat_fp = fp.parent / f"{ticker_upper}_10y_raw_features.parquet"
+                    feat_fp = fp.parent / f"{ticker_upper}_2y_raw_features.parquet"
                     if not feat_fp.exists():
                         # Glob for any features file
                         candidates = list(fp.parent.glob(f"{ticker_upper}_*_features.parquet"))
