@@ -29,7 +29,12 @@ from typing import Optional, Dict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from data_paths import CACHE_DIR
+from pathlib import Path
+
+# ADD at top
+ROOT = Path(__file__).parent.parent
+TICKER_CACHE_DIR = ROOT / "data_cache" / "10y_ticker_features"
+ETF_CACHE_DIR = ROOT / "data_cache" / "_etf_cache"
 
 SECTOR_ETFS = ["XLB", "XLC", "XLE", "XLF", "XLI", "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY"]
 DEFAULT_CRYPTO_PROXY = "^BTC-USD"
@@ -45,8 +50,8 @@ logging.basicConfig(
 
 def parse_args():
     ap = argparse.ArgumentParser(description="Ultimate feature enhancement (market + cross-sectional + interactions)")
-    ap.add_argument("--features-dir", type=str, default=str(Path(CACHE_DIR) / "10y_ticker_features"))
-    ap.add_argument("--cache-dir", type=str, default=str(CACHE_DIR))
+    ap.add_argument("--features-dir", type=str, default=str(Path(TICKER_CACHE_DIR) / "10y_ticker_features"))
+    ap.add_argument("--cache-dir", type=str, default=str(TICKER_CACHE_DIR))
     ap.add_argument("--sector-map", type=str, default=None)
     ap.add_argument("--overwrite", action="store_true")
     ap.add_argument("--processes", type=int, default=4)
