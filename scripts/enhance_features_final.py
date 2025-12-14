@@ -50,7 +50,7 @@ logging.basicConfig(
 
 def parse_args():
     ap = argparse.ArgumentParser(description="Ultimate feature enhancement (market + cross-sectional + interactions)")
-    ap.add_argument("--features-dir", type=str, default=str(Path(TICKER_CACHE_DIR) / "10y_ticker_features"))
+    ap.add_argument("--features-dir", type=str, default=str(TICKER_CACHE_DIR))
     ap.add_argument("--cache-dir", type=str, default=str(TICKER_CACHE_DIR))
     ap.add_argument("--sector-map", type=str, default=None)
     ap.add_argument("--overwrite", action="store_true")
