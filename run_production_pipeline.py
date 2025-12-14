@@ -16,8 +16,10 @@ def run(cmd):
     print(f"Running: {cmd}")
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
-        print("ERROR:", result.stderr)
+        print("ERROR:", result.stderr)  # Only real errors
         sys.exit(1)
+    if result.stderr:  # Warnings ok
+        print("WARNINGS:", result.stderr)
     print(result.stdout)
 
 def main():
