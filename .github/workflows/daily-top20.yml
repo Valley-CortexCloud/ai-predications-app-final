@@ -1,0 +1,52 @@
+name: Daily Top 20 Alpha
+
+on:
+  schedule:
+    - cron: '30 8 * * 1-5'   # 4:30 AM ET (8:30 UTC), Mon-Fri
+  workflow_dispatch:         # Manual trigger
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest     # Or macos-latest if you need GUI stuff (not needed)
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install yfinance lightgbm pandas numpy requests exchange_calendars  # add any missing
+
+      - name: Run production pipeline
+        run: python run_production_pipeline.py
+
+      - name: Upload top 20 as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: top20-${{ github.run_date }}
+          path: datasets/top20_*.csv
+
+      - name: Email Top 20
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}   # your gmail
+          password: ${{ secrets.EMAIL_PASS }}   # app password (not regular password)
+          subject: "🚀 Daily Top 20 Alpha - ${{ github.run_date }}"
+          to: your.email@gmail.com
+          from: Grok Quant Bot <your.email@gmail.com>
+          body: |
+            Pipeline run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            Attached: today's top20.csv
+            
+            VIX regime: Low (trade active)
+          attachments: datasets/top20_*.csv
