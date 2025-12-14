@@ -70,7 +70,8 @@ def fetch_sp500_tickers() -> List[str]:
     try:
         resp = requests.get(url, headers=headers, timeout=30)
         resp.raise_for_status()
-        df = pd.read_html(resp.text)[0]
+        # FIX: Wrap the HTML string
+        df = pd.read_html(StringIO(resp.text))[0]
         syms = df["Symbol"].astype(str).tolist()
         return [s.replace(".", "-").strip().upper() for s in syms]
     except Exception as e:
