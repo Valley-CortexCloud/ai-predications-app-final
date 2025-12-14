@@ -21,7 +21,12 @@ import logging
 
 # Add repo root for data_paths import
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from data_paths import CACHE_DIR
+from pathlib import Path
+
+# ADD at top
+ROOT = Path(__file__).parent.parent
+TICKER_CACHE_DIR = ROOT / "data_cache" / "10y_ticker_features"
+ETF_CACHE_DIR = ROOT / "data_cache" / "_etf_cache"
 
 # ---------------- Config ----------------
 HORIZON = 63
@@ -45,7 +50,7 @@ def parse_args():
     ap.add_argument("--exclude-earnings-pre", type=int, default=0)
     ap.add_argument("--exclude-earnings-post", type=int, default=0)
     # Paths
-    ap.add_argument("--cache-dir", type=str, default=str(CACHE_DIR))
+    ap.add_argument("--cache-dir", type=str, default=str(TICKER_CACHE_DIR))
     ap.add_argument("--spy-file", type=str, default=None, help="Direct path to SPY Parquet")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--debug", action="store_true")
