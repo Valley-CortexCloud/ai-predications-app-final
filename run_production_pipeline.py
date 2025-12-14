@@ -15,12 +15,11 @@ PREDICTIONS_PATH = DATASETS_DIR / "predictions_today.csv"
 def run(cmd):
     print(f"Running: {cmd}")
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    print("STDOUT:", result.stdout)   # ADD THIS
+    print("STDERR:", result.stderr)   # ADD THIS
     if result.returncode != 0:
-        print("ERROR:", result.stderr)  # Only real errors
+        print(f"Command failed with exit code {result.returncode}")
         sys.exit(1)
-    if result.stderr:  # Warnings ok
-        print("WARNINGS:", result.stderr)
-    print(result.stdout)
 
 def main():
     today = datetime.now().strftime("%Y-%m-%d")
