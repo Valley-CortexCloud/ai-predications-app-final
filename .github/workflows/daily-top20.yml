@@ -11,7 +11,16 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-
+        
+      - name: Cache data
+        uses: actions/cache@v4
+        with:
+          path: data_cache
+          key: data-cache-v1-$$ {{ github.run_date }}- $${{ github.run_number }}
+          restore-keys: |
+            data-cache-v1-${{ github.run_date }}
+            data-cache-v1-
+            
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
