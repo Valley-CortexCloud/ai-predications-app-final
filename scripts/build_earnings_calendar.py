@@ -113,8 +113,8 @@ def parse_provider_order(raw: Optional[str]) -> List[str]:
 
 def list_symbols_from_cache() -> List[str]:
     root = Path(CACHE_DIR)
-    # Use rglob for recursive search, but limit to _10y_ files only
-    files = sorted(root.rglob("*_10y_*.parquet"))
+    # Use rglob for recursive search, but limit to _2y_ files only
+    files = sorted(root.rglob("*_2y_*.parquet"))
     syms = []
     for fp in files:
         if not fp.is_file() or fp.name.endswith("_features.parquet"):
