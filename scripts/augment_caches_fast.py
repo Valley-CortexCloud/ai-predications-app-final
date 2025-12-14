@@ -152,7 +152,7 @@ def main():
                        help='Limit number of files to process (0 = all)')
     parser.add_argument('--tickers', type=str, default=None,
                        help='Comma-separated list of tickers to process (default: all)')
-    parser.add_argument('--cache-dir', type=str, default=str(CACHE_DIR),
+    parser.add_argument('--cache-dir', type=str, default=str(TICKER_CACHE_DIR),
                        help='Directory to search for cache files (default: from data_paths)')
     args = parser.parse_args()
     
