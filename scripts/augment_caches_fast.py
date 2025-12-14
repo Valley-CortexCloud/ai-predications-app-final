@@ -19,7 +19,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from lib.features import compute_all_features
 from lib.market_data import fetch_spy_history, fetch_sector_etf_history, get_sector_etf_symbol
 from lib.sector import get_ticker_sector
-from data_paths import CACHE_DIR
+from pathlib import Path
+
+# Hardcoded cache dirs (matches your structure)
+ROOT = Path(__file__).parent.parent
+TICKER_CACHE_DIR = ROOT / "data_cache" / "10y_ticker_features"
+ETF_CACHE_DIR = ROOT / "data_cache" / "_etf_cache"
 
 
 def _normalize_daily_index(df: pd.DataFrame | None) -> pd.DataFrame | None:
