@@ -25,6 +25,9 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
           
+      - name: Checkout repo 
+        uses: actions/checkout@v4
+        
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
