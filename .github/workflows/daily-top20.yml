@@ -48,7 +48,7 @@ jobs:
           username: ${{ secrets.EMAIL_USER }}   # your gmail
           password: ${{ secrets.EMAIL_PASS }}   # app password (not regular password)
           subject: "🚀 Daily Top 20 Alpha - ${{ github.run_date }}"
-          to: your.email@gmail.com
+          to: jvalley19@gmail.com
           from: Grok Quant Bot <your.email@gmail.com>
           body: |
             Pipeline run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
