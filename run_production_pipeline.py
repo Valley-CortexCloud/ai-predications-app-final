@@ -27,9 +27,9 @@ def main():
     print(f"=== Daily Top 20 Pipeline - {today} ===")
 
     # 1. Fetch only latest data for universe + benchmarks (incremental)
-    run(f"python3 scripts/fetch_history_bulletproof.py --universe sp500 --period 1d --out-dir {TICKER_CACHE_DIR} --max-workers 8")
-    run(f"python3 scripts/fetch_history_bulletproof.py --universe nasdaq --period 1d --out-dir {TICKER_CACHE_DIR} --max-workers 8")
-    run(f'python3 scripts/fetch_history_bulletproof.py --tickers "SPY,^VIX,TLT,^BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" --period 1d --out-dir {ETF_CACHE_DIR}')
+    run(f"python3 scripts/fetch_history_bulletproof.py --universe sp500 --period 2y --out-dir {TICKER_CACHE_DIR} --max-workers 8")
+    run(f"python3 scripts/fetch_history_bulletproof.py --universe nasdaq --period 27 --out-dir {TICKER_CACHE_DIR} --max-workers 8")
+    run(f'python3 scripts/fetch_history_bulletproof.py --tickers "SPY,^VIX,TLT,^BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" --period 2y --out-dir {ETF_CACHE_DIR}')
     
     # 2. Augment + enhance ONLY new/changed tickers (fast)
     run(f"python3 scripts/augment_caches_fast.py --processes 6 --cache-dir {TICKER_CACHE_DIR} --overwrite")
