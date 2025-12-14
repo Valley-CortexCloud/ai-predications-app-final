@@ -6,7 +6,8 @@ from datetime import datetime
 import pandas as pd
 
 ROOT = Path(__file__).parent
-CACHE_DIR = ROOT / "data_cache" / "10y_ticker_features"
+TICKER_CACHE_DIR = ROOT / "data_cache" / "10y_ticker_features"
+ETF_CACHE_DIR = ROOT / "data_cache" / "_etf_cache"
 MODEL_DIR = ROOT / "model"
 DATASETS_DIR = ROOT / "datasets"
 PREDICTIONS_PATH = DATASETS_DIR / "predictions_today.csv"
@@ -24,13 +25,13 @@ def main():
     print(f"=== Daily Top 20 Pipeline - {today} ===")
 
     # 1. Fetch only latest data for universe + benchmarks (incremental)
-    run(f"python3 scripts/fetch_history_bulletproof.py --universe sp500 --period 1d --out-dir {CACHE_DIR} --max-workers 8")
-    run(f"python3 scripts/fetch_history_bulletproof.py --universe nasdaq --period 1d --out-dir {CACHE_DIR} --max-workers 8")
-    run(f'python3 scripts/fetch_history_bulletproof.py --tickers "SPY,^VIX,TLT,^BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" --period 1d --out-dir {CACHE_DIR}')
-
+    run(f"python3 scripts/fetch_history_bulletproof.py --universe sp500 --period 1d --out-dir {TICKER_CACHE_DIR} --max-workers 8")
+    run(f"python3 scripts/fetch_history_bulletproof.py --universe nasdaq --period 1d --out-dir {TICKER_CACHE_DIR} --max-workers 8")
+    run(f'python3 scripts/fetch_history_bulletproof.py --tickers "SPY,^VIX,TLT,^BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" --period 1d --out-dir {ETF_CACHE_DIR}')
+    
     # 2. Augment + enhance ONLY new/changed tickers (fast)
-    run(f"python3 scripts/augment_caches_fast.py --processes 6 --cache-dir {CACHE_DIR} --overwrite")
-    run(f"python3 scripts/enhance_features_final.py --processes 4 --cache-dir {CACHE_DIR} --overwrite")
+    run(f"python3 scripts/augment_caches_fast.py --processes 6 --cache-dir {TICKER_CACHE_DIR} --overwrite")
+    run(f"python3 scripts/enhance_features_final.py --processes 4 --cache-dir {TICKER_CACHE_DIR} --overwrite")
 
     # 3. Earnings calendar (weekly is fine — run only on Mondays)
     if datetime.now().weekday() == 0:  # Monday
@@ -39,6 +40,25 @@ def main():
     # 4. Build today's feature dataset (latest date only)
     run(f"python3 scripts/build_labels_final.py --cache-dir {CACHE_DIR} --output {DATASETS_DIR}/today_features.parquet --earnings-file data/earnings.csv")
 
+    # Load today's dataset to check VIX
+    today_features_path = DATASETS_DIR / "today_features.parquet"
+    today_df = pd.read_parquet(today_features_path)
+    
+    # feat_vix_level_z_63 is the same for all rows on a given date
+    current_vix_z = today_df['feat_vix_level_z_63'].iloc[0]  # safe, all identical
+    
+    print(f"\nCurrent feat_vix_level_z_63: {current_vix_z:.2f}")
+    
+    if current_vix_z > 1.5:
+        print("⚠️  HIGH VIX REGIME DETECTED (>1.5) — SKIPPING TRADES TODAY (model trained low-vol only)")
+        # Optional: save empty top20 or "cash" signal
+        pd.DataFrame({"note": ["High VIX - No trades"]}).to_csv(DATASETS_DIR / f"top20_{today}.csv")
+    else:
+        print("✅ Low VIX regime — proceeding with predictions")
+        # Proceed to apply_ranker and top20
+        run(f"python3 scripts/apply_ranker.py --dataset {today_features_path} --model-dir {MODEL_DIR} --out-dir {DATASETS_DIR}")
+        
+    # Then your existing top20 post-process...
     # 5. Apply frozen model → predictions
     run(f"python3 scripts/apply_ranker.py --dataset {DATASETS_DIR}/today_features.parquet --model-dir {MODEL_DIR} --out-dir {DATASETS_DIR}")
 
