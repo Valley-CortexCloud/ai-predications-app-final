@@ -1,0 +1,11 @@
+numpy
+pandas
+yfinance
+requests
+scikit-learn
+torch
+schedule
+pytest
+lightgbm
+joblib
+pyarrow
