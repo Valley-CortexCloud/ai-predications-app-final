@@ -119,7 +119,24 @@ def process_ticker_file(file_path: Path, overwrite: bool = False,
         float_cols = out_df.select_dtypes(include=['float64']).columns
         out_df[float_cols] = out_df[float_cols].astype('float32')
         
-        # Write to parquet with compression
+        # Debug logging: Show what columns are being saved
+        if verbose:
+            print(f"  Columns being saved: {list(out_df.columns)[:10]}... (total: {len(out_df.columns)})")
+        
+        # Defensive check: Ensure OHLCV columns exist before saving
+        required_cols = ['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+        missing_cols = [col for col in required_cols if col not in out_df.columns]
+        if missing_cols:
+            if verbose:
+                print(f"  Warning: Missing OHLCV columns: {missing_cols}")
+            return {
+                'ticker': ticker,
+                'status': 'error',
+                'error': f"Missing required columns: {missing_cols}"
+            }
+        
+        # Write to parquet with compression, preserving Date column but not as index
+        # This ensures Date is explicitly saved as a column for proper round-tripping
         out_df.to_parquet(out_file, compression='zstd', index=False)
         
         if verbose:
