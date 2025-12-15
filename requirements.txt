@@ -1,6 +1,6 @@
 numpy
 pandas
-yfinance
+yfinance==0.2.44
 requests
 scikit-learn
 torch
