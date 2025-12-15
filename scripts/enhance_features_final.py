@@ -387,11 +387,11 @@ def process_ticker(ticker: str, features_dir: Path, cache_dir: Path,
         df = normalize_df_index(df)
         
         # Debug logging: Show what columns were loaded
-        logging.info(f"{ticker}: Loaded {len(df)} rows, columns: {list(df.columns)[:10]}...")
+        logging.info(f"{ticker}: Loaded {len(df)} rows, columns: {list(df.columns)[:10]}... (total: {len(df.columns)})")
         
         # Defensive check: Ensure 'Adj Close' column exists
         if 'Adj Close' not in df.columns:
-            return {"ticker": ticker, "status": "error", "error": f"Missing 'Adj Close' column. Available: {list(df.columns)[:5]}"}
+            return {"ticker": ticker, "status": "error", "error": f"Missing 'Adj Close' column. Available columns (first 10): {list(df.columns)[:10]}..."}
         
         if len(df) < 126:
             return {"ticker": ticker, "status": "skip", "reason": "insufficient_data"}

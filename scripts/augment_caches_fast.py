@@ -26,6 +26,9 @@ ROOT = Path(__file__).parent.parent
 TICKER_CACHE_DIR = ROOT / "data_cache" / "10y_ticker_features"
 ETF_CACHE_DIR = ROOT / "data_cache" / "_etf_cache"
 
+# Required OHLCV columns for validation
+REQUIRED_OHLCV_COLUMNS = ['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+
 
 def _normalize_daily_index(df: pd.DataFrame | None) -> pd.DataFrame | None:
     """Make index tz-naive date-only, deduped and sorted. Accepts df with index or 'Date' column."""
@@ -124,8 +127,7 @@ def process_ticker_file(file_path: Path, overwrite: bool = False,
             print(f"  Columns being saved: {list(out_df.columns)[:10]}... (total: {len(out_df.columns)})")
         
         # Defensive check: Ensure OHLCV columns exist before saving
-        required_cols = ['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
-        missing_cols = [col for col in required_cols if col not in out_df.columns]
+        missing_cols = [col for col in REQUIRED_OHLCV_COLUMNS if col not in out_df.columns]
         if missing_cols:
             if verbose:
                 print(f"  Warning: Missing OHLCV columns: {missing_cols}")
