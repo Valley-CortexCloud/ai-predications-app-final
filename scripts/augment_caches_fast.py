@@ -139,7 +139,7 @@ def process_ticker_file(file_path: Path, overwrite: bool = False,
         
         # Write to parquet with compression, preserving Date column but not as index
         # This ensures Date is explicitly saved as a column for proper round-tripping
-        out_df.to_parquet(out_file, compression='zstd', index=False)
+        out_df.to_parquet(out_file, compression='zstd') 
         
         if verbose:
             print(f"  ✓ {ticker}: {len(out_df)} rows, {len(features.columns)} features")
