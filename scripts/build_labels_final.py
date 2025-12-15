@@ -129,8 +129,8 @@ def find_cache_for_ticker(ticker: str, cache_dir: str) -> Optional[Path]:
     if cand:
         return sorted(cand)[0]
     
-    # Try _etf_cache in PARENT directory (go up one level if we're in 2y_ticker_features)
-    cache_root = p.parent if p.name == "2y_ticker_features" else p
+    # Try _etf_cache in PARENT directory (go up one level if we're in a ticker features directory)
+    cache_root = p.parent if p.name in ["2y_ticker_features", "10y_ticker_features"] else p
     etf_dir = cache_root / '_etf_cache'
     
     if etf_dir.exists():
