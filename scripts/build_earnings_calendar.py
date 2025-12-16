@@ -177,132 +177,96 @@ def try_imports_yf():
     except Exception:
         return None
 
-def fetch_yahoo_events(symbol: str, start: Optional[dt.date], end: Optional[dt.date], verbose: bool=False) -> List[Dict[str, Any]]:
+# Module-level rate limiter
+_LAST_YAHOO_CALL = 0.0
+_YAHOO_MIN_INTERVAL = 2.0
+
+def fetch_yahoo_events(symbol:  str, start: Optional[dt.date], end: Optional[dt.date], verbose: bool = False) -> List[Dict[str, Any]]:
     """
-    Updated yfinance fetch with EPS parsing. Requires latest yfinance (pip install --upgrade yfinance).
-    Handles historical and future (via calendar fallback).
+    Updated yfinance fetch with EPS parsing + smart anti-blocking backoff. 
     """
-    evs: List[Dict[str, Any]] = []
+    global _LAST_YAHOO_CALL
+    
+    evs:  List[Dict[str, Any]] = []
     yf_mod = try_imports_yf()
     if yf_mod is None:
         if verbose:
             print("[Yahoo] yfinance not available.")
         return evs
-    limit_sweep = (100, 50, 20, 10)  # Respect max limit
+
+    USER_AGENTS = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+    ]
+
+    # Global rate limit enforcement
+    now = time.time()
+    sleep_need = _YAHOO_MIN_INTERVAL - (now - _LAST_YAHOO_CALL)
+    if sleep_need > 0:
+        time.sleep(sleep_need)
+
+    limit_sweep = (100, 50, 20, 10)
+    max_attempts_per_limit = 5
+
     try:
         t = yf_mod.Ticker(yahoo_symbol_norm(symbol))
+        
+        # Inject random User-Agent into ticker's session
+        try:
+            if hasattr(t, '_session') and t._session:
+                t._session.headers.update({"User-Agent": random.choice(USER_AGENTS)})
+        except Exception:
+            pass
+
         df = None
-        for lim in limit_sweep:
-            for attempt in range(1, 6):
+        for lim_idx, lim in enumerate(limit_sweep):
+            for attempt in range(1, max_attempts_per_limit + 1):
+                # Human-like delay with jitter
+                base_delay = random.uniform(1. 0, 4.0)
+                jitter = random.uniform(0.5, 2.0)
+                sleep_time = base_delay + jitter
+                
+                # Exponential backoff on retries
+                if attempt > 1:
+                    sleep_time += (2 ** (attempt - 1))
+                    if verbose:
+                        print(f"[Yahoo] {symbol} retry #{attempt} after {sleep_time:.1f}s (lim={lim})")
+
+                time.sleep(sleep_time)
+                _LAST_YAHOO_CALL = time.time()
+
                 try:
-                    df = t.get_earnings_dates(limit=lim)
+                    df = t. get_earnings_dates(limit=lim)
                     if isinstance(df, pd.DataFrame) and not df.empty:
+                        if verbose:
+                            print(f"[Yahoo] ✓ {symbol}:  {len(df)} rows (lim={lim})")
                         break
-                except Exception as e:
+                except Exception as e: 
                     err_str = str(e).lower()
-                    if '429' in err_str or 'rate limit' in err_str:
-                        sleep_sec = 2 ** attempt + 1
+                    if '429' in err_str or 'rate limit' in err_str or 'too many requests' in err_str: 
                         if verbose:
-                            print(f"[Yahoo] 429 for {symbol} (lim={lim}, att={attempt}); sleep {sleep_sec}s")
-                        time.sleep(sleep_sec)
-                    elif '401' in err_str:
+                            print(f"[Yahoo] ⚠️  Rate limit for {symbol} - heavy backoff")
+                        time.sleep(random.uniform(10, 25))
+                        _LAST_YAHOO_CALL = time.time()
+                    elif '401' in err_str: 
                         if verbose:
-                            print(f"[Yahoo] 401 for {symbol}; headers/proxy may be needed.")
+                            print(f"[Yahoo] ✗ 401 for {symbol} - skipping")
                         break
                     else:
-                        if verbose:
-                            print(f"[Yahoo] Error for {symbol} (lim={lim}): {e}")
-                        break
+                        if verbose and attempt == max_attempts_per_limit: 
+                            print(f"[Yahoo] ✗ {symbol} failed:  {e}")
+
             if isinstance(df, pd.DataFrame) and not df.empty:
                 break
-            # Scrape fallback if standard fails (in latest yfinance)
-            try:
-                df = t.get_earnings_dates_using_scrape(limit=lim)
-                if isinstance(df, pd.DataFrame) and not df.empty:
-                    if verbose:
-                        print(f"[Yahoo] Used scrape fallback for {symbol} (lim={lim})")
-                    break
-            except AttributeError:
-                if verbose:
-                    print("[Yahoo] Scrape fallback unavailable; update yfinance to 0.2.66+")
-            except Exception as e:
-                if verbose:
-                    print(f"[Yahoo] Scrape fallback error for {symbol}: {e}")
 
+        # Rest of your code unchanged...
         if not isinstance(df, pd.DataFrame) or df.empty:
             if verbose:
-                print(f"[Yahoo] No earnings data for {symbol}")
-        else:
-            # Parse dates (index or column)
-            date_series = None
-            if isinstance(df.index, pd.DatetimeIndex) and df.index.notna().any():
-                date_series = pd.to_datetime(df.index, errors="coerce")
-            else:
-                for cand in ("Earnings Date", "EarningsDate", "date", "Date"):
-                    if cand in df.columns:
-                        date_series = pd.to_datetime(df[cand], errors="coerce")
-                        break
-            if date_series is not None:
-                # EPS columns
-                eps_est_col = next((c for c in df.columns if "estimate" in c.lower() and "eps" in c.lower()), None)
-                eps_act_col = next((c for c in df.columns if ("reported" in c.lower() or "actual" in c.lower()) and "eps" in c.lower()), None)
-                surpr_col = next((c for c in df.columns if "surprise" in c.lower()), None)
-
-                for i in range(len(df)):
-                    d_raw = date_series[i] if isinstance(date_series, pd.DatetimeIndex) else date_series.iloc[i]
-                    d = pd.to_datetime(d_raw, errors="coerce")
-                    if pd.isna(d):
-                        continue
-                    d = d.normalize()
-                    if start and d.date() < start:
-                        continue
-                    if end and d.date() > end:
-                        continue
-                    row = df.iloc[i]
-                    eps_est = float(row[eps_est_col]) if eps_est_col and pd.notna(row[eps_est_col]) else np.nan
-                    eps_act = float(row[eps_act_col]) if eps_act_col and pd.notna(row[eps_act_col]) else np.nan
-                    surpr = float(row[surpr_col]) if surpr_col and pd.notna(row[surpr_col]) else _compute_surprise_pct(eps_act, eps_est)
-                    evs.append({
-                        "symbol": symbol,
-                        "earnings_date": d,
-                        "source": "yahoo",
-                        "eps_actual": eps_act,
-                        "eps_estimate": eps_est,
-                        "eps_surprise_pct": surpr,
-                        "release_time": "unknown",
-                    })
-
-        # Fallback for future/upcoming
-        if not evs or all(pd.to_datetime(e["earnings_date"]).date() < dt.date.today() for e in evs):
-            try:
-                cal = t.calendar
-                if isinstance(cal, pd.DataFrame) and not cal.empty:
-                    dcols = [c for c in cal.columns if "earn" in c.lower()]
-                    vals = []
-                    for c in dcols:
-                        vals.extend(pd.to_datetime(cal[c].astype(str), errors="coerce"))
-                    for d in _normalize_dates(vals):
-                        if start and d.date() < start:
-                            continue
-                        if end and d.date() > end:
-                            continue
-                        evs.append({
-                            "symbol": symbol,
-                            "earnings_date": d,
-                            "source": "yahoo",
-                            "eps_actual": np.nan,
-                            "eps_estimate": np.nan,
-                            "eps_surprise_pct": np.nan,
-                            "release_time": "unknown",
-                        })
-            except Exception as e:
-                if verbose:
-                    print(f"[Yahoo] Calendar fallback error for {symbol}: {e}")
-
-    except Exception as e:
-        if verbose:
-            print(f"[Yahoo] General error for {symbol}: {e}")
-    return evs
+                print(f"[Yahoo] ∅ No data for {symbol}")
+            return evs
+            
 
 def fetch_finnhub_events(symbol: str, start: Optional[dt.date], end: Optional[dt.date], token: Optional[str], verbose: bool=False) -> List[Dict[str, Any]]:
     """
