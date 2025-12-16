@@ -36,7 +36,7 @@ def main():
 
     # 3. Earnings calendar (weekly is fine — run only on Mondays)
     if datetime.now().weekday() == 0:  # Monday
-        run(f"python3 scripts/build_earnings_calendar.py --start 2014-11-01 --out data/earnings.csv --verbose")
+        run(f"python3 scripts/build_earnings_calendar.py --start 2020-01-01 --out data/earnings.csv --verbose")
 
     # 4. Build today's feature dataset (latest date only)
     run(f"python3 scripts/build_labels_final.py --cache-dir {TICKER_CACHE_DIR} --output {DATASETS_DIR}/today_features.parquet --earnings-file data/earnings.csv")
