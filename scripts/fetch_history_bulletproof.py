@@ -263,8 +263,15 @@ def fetch_yf_aligned(
     kwargs = dict(interval="1d", auto_adjust=False, actions=False, progress=False)  # no group_by
     if start or end:
         yfdf = yf.download(ticker, start=start, end=end, **kwargs)
+        if ticker == "SPY":  # Debug only for SPY
+          print(f"SPY RAW COLUMNS BEFORE FLATTEN: {list(yfdf.columns)}")
+          print(f"SPY COLUMN TYPE: {type(yfdf. columns)}")
     else:
         yfdf = yf.download(ticker, period=period, **kwargs)
+        if ticker == "SPY":  # Debug only for SPY
+          print(f"SPY RAW COLUMNS BEFORE FLATTEN: {list(yfdf.columns)}")
+          print(f"SPY COLUMN TYPE: {type(yfdf. columns)}")
+        
     if yfdf is None or len(yfdf) == 0:
         raise RuntimeError(f"yfinance returned no data for {ticker}")
 
