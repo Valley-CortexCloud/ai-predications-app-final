@@ -40,50 +40,59 @@ def main():
     #if datetime.now().weekday() == 0 or not earnings_file.exists():
     #    run(f"python3 scripts/build_earnings_calendar.py --start 2020-01-01 --out data/earnings.csv --verbose")
     # 4. Build today's feature dataset (latest date only)
-    run(f"python3 scripts/build_labels_final.py --cache-dir {TICKER_CACHE_DIR} --output {DATASETS_DIR}/today_features.parquet --earnings-file data/earnings.csv")
+    run(f"python3 scripts/build_labels_final.py --cache-dir {TICKER_CACHE_DIR} --output {DATASETS_DIR}/today_features.parquet --earnings-file data/earnings.csv --production-only")
 
-    # Load today's dataset to check VIX
+    # Load and validate dataset
     today_features_path = DATASETS_DIR / "today_features.parquet"
-    today_df = pd.read_parquet(today_features_path)
-    
-    # ===== VIX DIAGNOSTICS =====
-    print("\n" + "=" * 60)
-    print("VIX DIAGNOSTICS")
-    print("=" * 60)
+    full_df = pd.read_parquet(today_features_path)
 
+    print(f"\n{'='*60}")
+    print("DATASET VALIDATION")
+    print(f"{'='*60}")
+    print(f"Total rows loaded: {len(full_df)}")
+    print(f"Date range: {full_df['date'].min()} to {full_df['date'].max()}")
+    print(f"Unique dates: {full_df['date'].nunique()}")
+    print(f"Symbols: {full_df['symbol'].nunique()}")
+
+    # Filter to LATEST DATE ONLY for inference
+    latest_date = full_df['date'].max()
+    today_df = full_df[full_df['date'] == latest_date].copy()
+
+    print(f"\n📅 LATEST DATE: {latest_date}")
+    print(f"Rows for this date: {len(today_df)}")
+    print(f"Symbols for this date: {today_df['symbol'].nunique()}")
+
+    # Validate this is actually "today" or very recent
+    import datetime
+    actual_today = datetime.datetime.now().date()
+    days_behind = (pd.to_datetime(actual_today) - pd.to_datetime(latest_date)).days
+    print(f"Days behind current date: {days_behind}")
+
+    if days_behind > 5:
+        print(f"⚠️  WARNING: Latest data is {days_behind} days old! Expected fresh data.")
+    if days_behind < -1:
+        print(f"⚠️  WARNING: Latest date is {abs(days_behind)} days in the FUTURE! Data issue detected.")
+
+    # Extract VIX from LATEST date (all rows have same value for cross-sectional features)
     if 'feat_vix_level_z_63' in today_df.columns:
-        vix_z = today_df['feat_vix_level_z_63']
-        print(f"feat_vix_level_z_63 unique values: {vix_z.unique()[:10]}")
-        print(f"feat_vix_level_z_63 stats:")
-        print(vix_z.describe())
-        print(f"  - All zeros: {(vix_z == 0).all()}")
-        print(f"  - All NaN: {vix_z.isna().all()}")
+        current_vix_z = today_df['feat_vix_level_z_63'].iloc[0]
+        print(f"\nCurrent feat_vix_level_z_63 (from {latest_date}): {current_vix_z:.4f}")
+        
+        # Show VIX distribution to verify consistency
+        vix_unique = today_df['feat_vix_level_z_63'].nunique()
+        if vix_unique > 1:
+            print(f"⚠️  WARNING: VIX feature has {vix_unique} different values on same date! Should be 1.")
+            print(f"   Values: {today_df['feat_vix_level_z_63'].unique()[:10]}")
     else:
-        print("⚠️  feat_vix_level_z_63 MISSING from features!")
+        print("⚠️  ERROR: feat_vix_level_z_63 not found in features!")
+        current_vix_z = 0.0
 
-    # Check other VIX-related features
-    vix_features = [c for c in today_df.columns if 'vix' in c.lower()]
-    print(f"\nAll VIX features found: {vix_features}")
-    for feat in vix_features:
-        print(f"  {feat}: min={today_df[feat].min():.4f}, max={today_df[feat].max():.4f}, mean={today_df[feat].mean():.4f}")
-
-    # Check the raw VIX file
-    vix_file = ETF_CACHE_DIR / "^VIX_2y_adj.parquet"
-    if vix_file.exists():
-        vix_df = pd.read_parquet(vix_file)
-        print(f"\n✓ VIX file exists: {vix_file}")
-        print(f"  Shape: {vix_df.shape}")
-        print(f"  Columns: {list(vix_df.columns)}")
-        print(f"  Date range: {vix_df.index.min()} to {vix_df.index.max()}")
-        print(f"  Last 5 Close values:\n{vix_df['Close'].tail()}")
-        print(f"  Close stats: min={vix_df['Close'].min():.2f}, max={vix_df['Close'].max():.2f}, mean={vix_df['Close'].mean():.2f}")
-    else:
-        print(f"\n⚠️  VIX file NOT FOUND at {vix_file}")
-
-    print("=" * 60)
+    print(f"{'='*60}\n")
     
-    # feat_vix_level_z_63 is the same for all rows on a given date
-    current_vix_z = today_df['feat_vix_level_z_63'].iloc[0]  # safe, all identical
+    # Save TODAY-ONLY dataset for model prediction
+    today_only_path = DATASETS_DIR / "today_only.parquet"
+    today_df.to_parquet(today_only_path)
+    print(f"✓ Saved {len(today_df)} rows (latest date only) to {today_only_path}\n")
     
     print(f"\nCurrent feat_vix_level_z_63: {current_vix_z:.2f}")
     
@@ -93,58 +102,46 @@ def main():
         pd.DataFrame({"note": ["High VIX - No trades"]}).to_csv(DATASETS_DIR / f"top20_{today}.csv")
     else:
         print("✅ Low VIX regime — proceeding with predictions")
-        # Proceed to apply_ranker and top20
-        run(f"python3 scripts/apply_ranker.py --dataset {today_features_path} --model-dir {MODEL_DIR} --out-dir {DATASETS_DIR}")
-        
-    # Then your existing top20 post-process...
-    # 5. Apply frozen model → predictions
-    run(f"python3 scripts/apply_ranker.py --dataset {DATASETS_DIR}/today_features.parquet --model-dir {MODEL_DIR} --out-dir {DATASETS_DIR}")
+        # Proceed to apply_ranker with today-only data
+        run(f"python3 scripts/apply_ranker.py --dataset {today_only_path} --model-dir {MODEL_DIR} --out-dir {DATASETS_DIR}")
 
-    # 6. Post-process: Top 20 + risk overlay
+    # 5. Load predictions (should only be for latest date now)
     pred_df = pd.read_csv(PREDICTIONS_PATH)
-    
-    # ===== PREDICTION DIAGNOSTICS =====
-    print("\n" + "=" * 60)
-    print("PREDICTION DIAGNOSTICS")
-    print("=" * 60)
 
-    print(f"Predictions DataFrame shape: {pred_df.shape}")
-    print(f"Columns: {list(pred_df.columns)}")
-
-    if 'pred' in pred_df.columns:
-        print(f"\nPrediction statistics:")
-        print(pred_df['pred'].describe())
-        print(f"\nPredictions > 0: {(pred_df['pred'] > 0).sum()} ({(pred_df['pred'] > 0).sum() / len(pred_df) * 100:.1f}%)")
-        print(f"Predictions < 0: {(pred_df['pred'] < 0).sum()} ({(pred_df['pred'] < 0).sum() / len(pred_df) * 100:.1f}%)")
-        print(f"Predictions == 0: {(pred_df['pred'] == 0).sum()}")
-        
-        print(f"\nTop 10 positive predictions:")
-        top_positive = pred_df.nlargest(10, 'pred')[['symbol', 'pred', 'date']]
-        print(top_positive.to_string(index=False))
-        
-        print(f"\nTop 10 negative predictions (worst):")
-        top_negative = pred_df.nsmallest(10, 'pred')[['symbol', 'pred', 'date']]
-        print(top_negative.to_string(index=False))
-    else:
-        print("⚠️  'pred' column MISSING from predictions!")
+    print(f"\n{'='*60}")
+    print("PREDICTION VALIDATION")
+    print(f"{'='*60}")
+    print(f"Predictions loaded: {len(pred_df)}")
 
     if 'date' in pred_df.columns:
-        print(f"\nDate range in predictions: {pred_df['date'].min()} to {pred_df['date'].max()}")
+        print(f"Date range: {pred_df['date'].min()} to {pred_df['date'].max()}")
         print(f"Unique dates: {pred_df['date'].nunique()}")
-        latest_date = pred_df['date'].max()
-        print(f"Latest date: {latest_date}")
-        latest_count = (pred_df['date'] == latest_date).sum()
-        print(f"Predictions for latest date: {latest_count}")
+        
+        # Should only be ONE date
+        if pred_df['date'].nunique() > 1:
+            print(f"⚠️  WARNING: Multiple dates in predictions! Using latest...")
+            latest_pred_date = pred_df['date'].max()
+            pred_df = pred_df[pred_df['date'] == latest_pred_date].copy()
+            print(f"Filtered to {latest_pred_date}: {len(pred_df)} rows")
+        
+        final_date = pred_df['date'].iloc[0]
+        print(f"Final prediction date: {final_date}")
+    else:
+        print("⚠️  WARNING: No 'date' column in predictions")
+        final_date = "unknown"
 
-    print("=" * 60)
+    print(f"{'='*60}\n")
+
+    # Now filter by prediction quality
+    today_pred = pred_df.copy()  # Already filtered to latest date
     
-    latest_date = pred_df['date'].max()
-    today_df = pred_df[pred_df['date'] == latest_date].sort_values('pred', ascending=False)
+    # 6. Post-process: Top 20 + risk overlay
+    # Sort by prediction
+    today_pred = today_pred.sort_values('pred', ascending=False)
 
     # Quick-kill filter (apply here too)
-    valid = today_df.copy()
-    
-    # Only apply filters if columns exist
+    valid = today_pred.copy()
+
     if 'adv20_dollar' in valid.columns:
         valid = valid[valid['adv20_dollar'] >= 10_000_000]
     
@@ -153,6 +150,43 @@ def main():
 
     top20 = valid.head(20)[['symbol', 'pred']].reset_index(drop=True)
     top20.index += 1
+    
+    print(f"\n{'='*60}")
+    print("FINAL PIPELINE VALIDATION")
+    print(f"{'='*60}")
+
+    # Validate VIX check happened on correct date
+    print(f"VIX checked on date: {latest_date}")
+    print(f"VIX z-score: {current_vix_z:.4f}")
+    print(f"VIX regime decision: {'HIGH (skip trades)' if current_vix_z > 1.5 else 'LOW (trade active)'}")
+
+    # Validate predictions
+    print(f"\nPredictions generated: {len(top20)}")
+    print(f"Prediction date: {final_date}")
+
+    # Check if dates match
+    if str(latest_date) != str(final_date):
+        print(f"⚠️  WARNING: Feature date ({latest_date}) != Prediction date ({final_date})")
+
+    # Check prediction quality
+    if len(top20) > 0:
+        best_pred = top20['pred'].iloc[0]
+        worst_pred = top20['pred'].iloc[-1]
+        print(f"\nTop 20 prediction range: {worst_pred:.6f} to {best_pred:.6f}")
+        
+        if best_pred < 0:
+            print(f"⚠️  WARNING: Best prediction is negative ({best_pred:.6f})")
+            print(f"   Model expects ALL stocks to have negative excess returns")
+            print(f"   This may indicate:")
+            print(f"     - Market regime shift (bearish outlook)")
+            print(f"     - Feature drift from training distribution")
+            print(f"     - Data quality issue")
+        
+        positive_count = (top20['pred'] > 0).sum()
+        print(f"Positive predictions in Top 20: {positive_count}/20")
+
+    print(f"{'='*60}\n")
+    
     print("\n" + "="*50)
     print("TODAY'S TOP 20 LONG PORTFOLIO (63-day horizon)")
     print("="*50)
