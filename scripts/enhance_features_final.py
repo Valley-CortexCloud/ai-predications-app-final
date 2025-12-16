@@ -38,6 +38,7 @@ ETF_CACHE_DIR = ROOT / "data_cache" / "_etf_cache"
 
 SECTOR_ETFS = ["XLB", "XLC", "XLE", "XLF", "XLI", "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY"]
 DEFAULT_CRYPTO_PROXY = "^BTC-USD"
+HIGH_VOL_THRESHOLD = 1.5  # VIX z-score threshold for high volatility regime
 
 logging.basicConfig(
     level=logging.INFO,
@@ -165,7 +166,7 @@ def add_vix_regime_features(df: pd.DataFrame, vix_df: pd.DataFrame) -> pd.DataFr
         print("⚠️  VIX data is empty or all NaN")
         return df
     
-    vix_level = vix_df["Close"].reindex(df.index, method="ffill")
+    vix_level = vix_df["Close"].reindex(df.index).ffill()
     
     # Debug: Check reindexing result
     if vix_level.isna().all():
@@ -191,8 +192,8 @@ def add_vix_regime_features(df: pd.DataFrame, vix_df: pd.DataFrame) -> pd.DataFr
     # VIX delta (21-day change)
     df["feat_vix_delta_21d"] = vix_level.pct_change(21).ffill().bfill().fillna(0)
     
-    # High vol regime (z > 1.5)
-    df["feat_high_vol_regime"] = (df["feat_vix_level_z_63"] > 1.5).astype(int)
+    # High vol regime (z > HIGH_VOL_THRESHOLD)
+    df["feat_high_vol_regime"] = (df["feat_vix_level_z_63"] > HIGH_VOL_THRESHOLD).astype(int)
     
     # Debug output
     vix_stats = df["feat_vix_level_z_63"]

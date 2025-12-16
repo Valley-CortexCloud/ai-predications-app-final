@@ -717,9 +717,11 @@ def main():
     for feat in key_features:
         if feat in df_all.columns:
             vals = df_all[feat]
+            null_count = vals.isna().sum()
+            zero_count = (vals == 0).sum()
             print(f"  {feat}:")
             print(f"    min={vals.min():.6f}, max={vals.max():.6f}, mean={vals.mean():.6f}, std={vals.std():.6f}")
-            print(f"    nulls={vals.isna().sum()} ({vals.isna().sum()/len(vals)*100:.1f}%), zeros={( vals==0).sum()} ({(vals==0).sum()/len(vals)*100:.1f}%)")
+            print(f"    nulls={null_count} ({null_count/len(vals)*100:.1f}%), zeros={zero_count} ({zero_count/len(vals)*100:.1f}%)")
         else:
             print(f"  ⚠️  {feat}: MISSING!")
 
