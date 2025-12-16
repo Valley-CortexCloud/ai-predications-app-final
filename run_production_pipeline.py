@@ -36,7 +36,7 @@ def main():
 
     # 3. Earnings calendar (weekly is fine — run only on Mondays)
     # 3. Earnings calendar (Mondays OR if missing)
-    earnings_file = Path("data/earnings.csv")
+    #earnings_file = Path("data/earnings.csv")
     #if datetime.now().weekday() == 0 or not earnings_file.exists():
     #    run(f"python3 scripts/build_earnings_calendar.py --start 2020-01-01 --out data/earnings.csv --verbose")
     # 4. Build today's feature dataset (latest date only)
