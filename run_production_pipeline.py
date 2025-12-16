@@ -70,11 +70,14 @@ def main():
     today_df = pred_df[pred_df['date'] == latest_date].sort_values('pred', ascending=False)
 
     # Quick-kill filter (apply here too)
-    valid = today_df[
-        (today_df.get('adv20_dollar', 10e9) >= 10_000_000) &
-        (today_df.get('price', 100) >= 15) &
-        (today_df.get('price', 100) <= 3000)
-    ]
+    valid = today_df.copy()
+    
+    # Only apply filters if columns exist
+    if 'adv20_dollar' in valid.columns:
+        valid = valid[valid['adv20_dollar'] >= 10_000_000]
+    
+    if 'price' in valid. columns:
+        valid = valid[(valid['price'] >= 15) & (valid['price'] <= 3000)]
 
     top20 = valid.head(20)[['symbol', 'pred']].reset_index(drop=True)
     top20.index += 1
