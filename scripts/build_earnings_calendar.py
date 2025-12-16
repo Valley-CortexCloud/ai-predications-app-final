@@ -230,9 +230,10 @@ def fetch_yahoo_events(symbol: str, start: Optional[dt.date], end: Optional[dt.d
                 if hasattr(t, 'calendar') and t.calendar is not None:
                     cal_df = t.calendar
                     if isinstance(cal_df, pd.DataFrame) and not cal_df.empty:
+                        df = cal_df  # Assign to df so it gets processed
                         if verbose:
                             print(f"[Yahoo] Used calendar fallback for {symbol}")
-                        # Will be processed in calendar section below
+                        break
             except Exception as e:
                 if verbose:
                     print(f"[Yahoo] All methods failed for {symbol} (lim={lim}): {e}")
@@ -262,8 +263,8 @@ def fetch_yahoo_events(symbol: str, start: Optional[dt.date], end: Optional[dt.d
                         break
                 
                 # Search for actual column  
-                for pattern in ['reported', 'actual', 'eps']:
-                    eps_act_col = next((c for c in df.columns if pattern in c.lower() and ('actual' in c.lower() or 'reported' in c.lower())), None)
+                for pattern in [('actual', 'eps'), ('reported', 'eps')]:
+                    eps_act_col = next((c for c in df.columns if all(p in c.lower() for p in pattern)), None)
                     if eps_act_col:
                         break
                 
