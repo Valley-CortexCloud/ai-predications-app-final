@@ -15,7 +15,10 @@ jobs:
       - name: Cache data
         uses: actions/cache@v4
         with:
-          path: data_cache
+          path: |
+            data_cache
+            data
+            datasets
           key: data-cache-v1-$$ {{ github.run_date }}- $${{ github.run_number }}
           restore-keys: |
             data-cache-v1-${{ github.run_date }}
