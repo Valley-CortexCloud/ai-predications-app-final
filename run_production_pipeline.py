@@ -46,6 +46,42 @@ def main():
     today_features_path = DATASETS_DIR / "today_features.parquet"
     today_df = pd.read_parquet(today_features_path)
     
+    # ===== VIX DIAGNOSTICS =====
+    print("\n" + "=" * 60)
+    print("VIX DIAGNOSTICS")
+    print("=" * 60)
+
+    if 'feat_vix_level_z_63' in today_df.columns:
+        vix_z = today_df['feat_vix_level_z_63']
+        print(f"feat_vix_level_z_63 unique values: {vix_z.unique()[:10]}")
+        print(f"feat_vix_level_z_63 stats:")
+        print(vix_z.describe())
+        print(f"  - All zeros: {(vix_z == 0).all()}")
+        print(f"  - All NaN: {vix_z.isna().all()}")
+    else:
+        print("⚠️  feat_vix_level_z_63 MISSING from features!")
+
+    # Check other VIX-related features
+    vix_features = [c for c in today_df.columns if 'vix' in c.lower()]
+    print(f"\nAll VIX features found: {vix_features}")
+    for feat in vix_features:
+        print(f"  {feat}: min={today_df[feat].min():.4f}, max={today_df[feat].max():.4f}, mean={today_df[feat].mean():.4f}")
+
+    # Check the raw VIX file
+    vix_file = ETF_CACHE_DIR / "^VIX_2y_adj.parquet"
+    if vix_file.exists():
+        vix_df = pd.read_parquet(vix_file)
+        print(f"\n✓ VIX file exists: {vix_file}")
+        print(f"  Shape: {vix_df.shape}")
+        print(f"  Columns: {list(vix_df.columns)}")
+        print(f"  Date range: {vix_df.index.min()} to {vix_df.index.max()}")
+        print(f"  Last 5 Close values:\n{vix_df['Close'].tail()}")
+        print(f"  Close stats: min={vix_df['Close'].min():.2f}, max={vix_df['Close'].max():.2f}, mean={vix_df['Close'].mean():.2f}")
+    else:
+        print(f"\n⚠️  VIX file NOT FOUND at {vix_file}")
+
+    print("=" * 60)
+    
     # feat_vix_level_z_63 is the same for all rows on a given date
     current_vix_z = today_df['feat_vix_level_z_63'].iloc[0]  # safe, all identical
     
@@ -66,6 +102,42 @@ def main():
 
     # 6. Post-process: Top 20 + risk overlay
     pred_df = pd.read_csv(PREDICTIONS_PATH)
+    
+    # ===== PREDICTION DIAGNOSTICS =====
+    print("\n" + "=" * 60)
+    print("PREDICTION DIAGNOSTICS")
+    print("=" * 60)
+
+    print(f"Predictions DataFrame shape: {pred_df.shape}")
+    print(f"Columns: {list(pred_df.columns)}")
+
+    if 'pred' in pred_df.columns:
+        print(f"\nPrediction statistics:")
+        print(pred_df['pred'].describe())
+        print(f"\nPredictions > 0: {(pred_df['pred'] > 0).sum()} ({(pred_df['pred'] > 0).sum() / len(pred_df) * 100:.1f}%)")
+        print(f"Predictions < 0: {(pred_df['pred'] < 0).sum()} ({(pred_df['pred'] < 0).sum() / len(pred_df) * 100:.1f}%)")
+        print(f"Predictions == 0: {(pred_df['pred'] == 0).sum()}")
+        
+        print(f"\nTop 10 positive predictions:")
+        top_positive = pred_df.nlargest(10, 'pred')[['symbol', 'pred', 'date']]
+        print(top_positive.to_string(index=False))
+        
+        print(f"\nTop 10 negative predictions (worst):")
+        top_negative = pred_df.nsmallest(10, 'pred')[['symbol', 'pred', 'date']]
+        print(top_negative.to_string(index=False))
+    else:
+        print("⚠️  'pred' column MISSING from predictions!")
+
+    if 'date' in pred_df.columns:
+        print(f"\nDate range in predictions: {pred_df['date'].min()} to {pred_df['date'].max()}")
+        print(f"Unique dates: {pred_df['date'].nunique()}")
+        latest_date = pred_df['date'].max()
+        print(f"Latest date: {latest_date}")
+        latest_count = (pred_df['date'] == latest_date).sum()
+        print(f"Predictions for latest date: {latest_count}")
+
+    print("=" * 60)
+    
     latest_date = pred_df['date'].max()
     today_df = pred_df[pred_df['date'] == latest_date].sort_values('pred', ascending=False)
 
@@ -76,7 +148,7 @@ def main():
     if 'adv20_dollar' in valid.columns:
         valid = valid[valid['adv20_dollar'] >= 10_000_000]
     
-    if 'price' in valid. columns:
+    if 'price' in valid.columns:
         valid = valid[(valid['price'] >= 15) & (valid['price'] <= 3000)]
 
     top20 = valid.head(20)[['symbol', 'pred']].reset_index(drop=True)
