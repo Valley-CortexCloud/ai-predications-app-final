@@ -1,80 +1,63 @@
 name: Daily Top 20 Alpha
 
 on:
-  schedule:
-    - cron: '30 8 * * 1-5'   # 4:30 AM ET (8:30 UTC), Mon-Fri
-  workflow_dispatch:         # Manual trigger
+  schedule: 
+    - cron: '30 8 * * 1-5'   # 4:30 AM ET
+  workflow_dispatch:
 
 jobs:
   run-pipeline:
-    runs-on: ubuntu-latest     # Or macos-latest if you need GUI stuff (not needed)
-    steps:
+    runs-on:  ubuntu-latest
+    steps: 
       - name: Checkout repo
         uses: actions/checkout@v4
-        
+
+      - name: Set date
+        id: date
+        run:  echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
       - name: Cache data
-        uses: actions/cache@v4
+        uses:  actions/cache@v4
         with:
           path: |
             data_cache
             data
             datasets
-          key: data-cache-v1-$$ {{ github.run_date }}- $${{ github.run_number }}
+          key: data-cache-v1-${{ steps.date.outputs.DATE }}-${{ github.run_number }}
           restore-keys: |
-            data-cache-v1-${{ github.run_date }}
+            data-cache-v1-${{ steps.date.outputs.DATE }}-
             data-cache-v1-
-            
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Free up disk space (manual - safe and effective)
-        run: |
-          echo "Before cleanup:"
-          df -h /
-
-          sudo rm -rf /usr/share/dotnet      # ~10-17GB
-          sudo rm -rf /usr/local/lib/android # ~10-15GB
-          sudo rm -rf /opt/ghc               # ~3-5GB
-          sudo rm -rf /opt/hostedtoolcache/CodeQL  # ~5GB
-          sudo rm -rf /usr/local/.ghcup      # Haskell extras
-          sudo docker image prune -a -f      # If any Docker images (optional, ~3GB)
-          sudo apt-get clean
-          sudo rm -rf /var/lib/apt/lists/*
-
-          echo "After cleanup:"
-          df -h /
-          
-      - name: Checkout repo 
-        uses: actions/checkout@v4
-        
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install yfinance lightgbm pandas numpy requests exchange_calendars  # add any missing
-     
+
       - name: Run production pipeline
         run: python run_production_pipeline.py
 
       - name: Upload top 20 as artifact
         uses: actions/upload-artifact@v4
-        with:
-          name: top20-${{ github.run_date }}
+        with: 
+          name: top20-${{ steps.date.outputs.DATE }}
           path: datasets/top20_*.csv
 
       - name: Email Top 20
-        if: always()
+        if:  always()
         uses: dawidd6/action-send-mail@v3
-        with:
+        with: 
           server_address: smtp.gmail.com
           server_port: 465
-          username: ${{ secrets.EMAIL_USER }}   # your gmail
-          password: ${{ secrets.EMAIL_PASS }}   # app password (not regular password)
-          subject: "🚀 Daily Top 20 Alpha - ${{ github.run_date }}"
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: "🚀 Daily Top 20 Alpha - ${{ steps.date.outputs.DATE }}"
           to: jvalley19@gmail.com
-          from: Grok Quant Bot <your.email@gmail.com>
+          from: Grok Quant Bot <jvalley19@gmail.com>
           body: |
             Pipeline run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             
@@ -82,3 +65,55 @@ jobs:
             
             VIX regime: Low (trade active)
           attachments: datasets/top20_*.csv
+
+  llm-supercharge: 
+    needs: run-pipeline
+    runs-on: ubuntu-latest
+    steps:
+      - name:  Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set date
+        id: date
+        run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Download top20 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: top20-${{ steps.date.outputs. DATE }}
+          path: datasets/
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with: 
+          python-version: '3.12'
+
+      - name: Install LLM deps
+        run: pip install langchain langchain-groq pandas
+
+      - name: Run LLM analysis
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python scripts/llm_supercharge. py
+
+      - name: Upload supercharged report
+        uses: actions/upload-artifact@v4
+        with:
+          name: supercharged-top20-${{ steps.date.outputs.DATE }}
+          path: datasets/supercharged_*.csv
+
+      - name: Email Supercharged Report
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address:  smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: "🧠 LLM-Enhanced Top 20 - ${{ steps.date.outputs. DATE }}"
+          to: jvalley19@gmail.com
+          from: Grok Quant Bot <jvalley19@gmail.com>
+          body: |
+            LLM supercharged analysis attached! 
+            
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          attachments: datasets/supercharged_*.csv
