@@ -155,17 +155,49 @@ def add_sector_relative_features(df: pd.DataFrame, sector_df: pd.DataFrame, sect
     return df
 
 def add_vix_regime_features(df: pd.DataFrame, vix_df: pd.DataFrame) -> pd.DataFrame:
-    """VIX z-score, delta, high vol flag"""
+    """High-vol regime, VIX z-scores"""
     if "Close" not in vix_df.columns:
+        print("⚠️  VIX DataFrame missing 'Close' column")
         return df
     
-    vix_level = vix_df["Close"].reindex(df.index, method="ffill").fillna(0)
-    vix_mean = vix_level.rolling(63).mean()
-    vix_std = vix_level.rolling(63).std()
+    # Check if VIX data is valid
+    if vix_df["Close"].isna().all() or len(vix_df) == 0:
+        print("⚠️  VIX data is empty or all NaN")
+        return df
     
-    df["feat_vix_level_z_63"] = ((vix_level - vix_mean) / vix_std.replace(0, np.nan)).fillna(0)
-    df["feat_vix_delta_21d"] = vix_level.pct_change(21).fillna(0)
-    df["feat_high_vol_regime"] = (df["feat_vix_level_z_63"] > 0.5).astype(float)
+    vix_level = vix_df["Close"].reindex(df.index, method="ffill")
+    
+    # Debug: Check reindexing result
+    if vix_level.isna().all():
+        print(f"⚠️  VIX reindex failed - no overlap between VIX dates and feature dates")
+        print(f"   VIX date range: {vix_df.index.min()} to {vix_df.index.max()}")
+        print(f"   Feature date range: {df.index.min()} to {df.index.max()}")
+        # Return df with zero features rather than breaking
+        df["feat_vix_level_z_63"] = 0.0
+        df["feat_high_vol_regime"] = 0
+        return df
+    
+    # Calculate z-score with proper handling
+    vix_mean = vix_level.rolling(63, min_periods=20).mean()
+    vix_std = vix_level.rolling(63, min_periods=20).std()
+    
+    # Prevent division by zero
+    vix_std_safe = vix_std.replace(0, np.nan)
+    vix_z = (vix_level - vix_mean) / vix_std_safe
+    
+    # Forward fill first, then backfill, then fill remaining with 0
+    df["feat_vix_level_z_63"] = vix_z.fillna(method='ffill').fillna(method='bfill').fillna(0)
+    
+    # VIX delta (21-day change)
+    df["feat_vix_delta_21d"] = vix_level.pct_change(21).fillna(method='ffill').fillna(method='bfill').fillna(0)
+    
+    # High vol regime (z > 1.5)
+    df["feat_high_vol_regime"] = (df["feat_vix_level_z_63"] > 1.5).astype(int)
+    
+    # Debug output
+    vix_stats = df["feat_vix_level_z_63"]
+    print(f"✓ VIX features computed: mean={vix_stats.mean():.4f}, std={vix_stats.std():.4f}, min={vix_stats.min():.4f}, max={vix_stats.max():.4f}")
+    print(f"  High vol regime: {df['feat_high_vol_regime'].sum()} / {len(df)} rows ({df['feat_high_vol_regime'].sum()/len(df)*100:.1f}%)")
     
     return df
 

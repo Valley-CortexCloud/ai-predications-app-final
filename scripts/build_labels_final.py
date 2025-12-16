@@ -194,6 +194,17 @@ def load_earnings_events(file_path: Optional[str]) -> Dict[str, pd.DataFrame]:
         return {}
     
     df = pd.read_csv(file_path)
+    
+    # Diagnostics
+    print(f"\n📅 Earnings Calendar Loaded:")
+    print(f"  Total rows: {len(df)}")
+    print(f"  Symbols: {df['symbol'].nunique()}")
+    print(f"  Date range: {df['earnings_date'].min()} to {df['earnings_date'].max()}")
+    
+    if 'eps_actual' in df.columns and 'eps_estimate' in df.columns:
+        has_both = df[['eps_actual', 'eps_estimate']].notna().all(axis=1).sum()
+        print(f"  Rows with both EPS actual & estimate: {has_both} / {len(df)} ({has_both/len(df)*100:.1f}%)")
+    
     if df.empty:
         return {}
     
@@ -650,6 +661,78 @@ def main():
     
     # Deduplicate by (date, symbol)
     df_all = df_all.sort_values(["date", "symbol"]).drop_duplicates(["date", "symbol"], keep="last")
+    
+    # ===== FEATURE SANITY CHECKS =====
+    print("\n" + "=" * 60)
+    print("FEATURE SANITY CHECKS")
+    print("=" * 60)
+
+    feature_cols = [c for c in df_all.columns if c.startswith('feat_')]
+    print(f"Total features: {len(feature_cols)}")
+    print(f"Total rows: {len(df_all)}")
+    print(f"Date range: {df_all['date'].min()} to {df_all['date'].max()}")
+    print(f"Symbols: {df_all['symbol'].nunique()}")
+
+    # Check for problematic features
+    zero_features = [c for c in feature_cols if (df_all[c] == 0).all()]
+    if zero_features:
+        print(f"\n⚠️  Features that are ALL ZERO ({len(zero_features)}):")
+        for feat in zero_features[:20]:
+            print(f"    - {feat}")
+        if len(zero_features) > 20:
+            print(f"    ... and {len(zero_features) - 20} more")
+
+    nan_features = [c for c in feature_cols if df_all[c].isna().all()]
+    if nan_features:
+        print(f"\n⚠️  Features that are ALL NaN ({len(nan_features)}):")
+        for feat in nan_features[:20]:
+            print(f"    - {feat}")
+        if len(nan_features) > 20:
+            print(f"    ... and {len(nan_features) - 20} more")
+
+    constant_features = []
+    for c in feature_cols:
+        if df_all[c].nunique() == 1:
+            constant_features.append((c, df_all[c].iloc[0]))
+    if constant_features:
+        print(f"\n⚠️  Features with only ONE unique value ({len(constant_features)}):")
+        for feat, val in constant_features[:20]:
+            print(f"    - {feat} = {val}")
+        if len(constant_features) > 20:
+            print(f"    ... and {len(constant_features) - 20} more")
+
+    # Check critical features in detail
+    print(f"\n📊 Key Feature Statistics:")
+    key_features = [
+        'feat_vix_level_z_63',
+        'feat_beta_spy_126', 
+        'feat_earnings_quality',
+        'mom_12m_skip1m',
+        'feat_high_vol_regime',
+        'feat_sector_rel_ret_21d',
+        'rsi',
+        'feat_idio_vol_63'
+    ]
+
+    for feat in key_features:
+        if feat in df_all.columns:
+            vals = df_all[feat]
+            print(f"  {feat}:")
+            print(f"    min={vals.min():.6f}, max={vals.max():.6f}, mean={vals.mean():.6f}, std={vals.std():.6f}")
+            print(f"    nulls={vals.isna().sum()} ({vals.isna().sum()/len(vals)*100:.1f}%), zeros={( vals==0).sum()} ({(vals==0).sum()/len(vals)*100:.1f}%)")
+        else:
+            print(f"  ⚠️  {feat}: MISSING!")
+
+    # Check feature correlations with a few key ones
+    print(f"\n🔗 Correlation check (sample features with feat_vix_level_z_63):")
+    if 'feat_vix_level_z_63' in df_all.columns:
+        corr_features = ['mom_12m_skip1m', 'rsi', 'feat_beta_spy_126', 'feat_high_vol_regime']
+        for feat in corr_features:
+            if feat in df_all.columns:
+                corr = df_all['feat_vix_level_z_63'].corr(df_all[feat])
+                print(f"  {feat}: {corr:.4f}")
+
+    print("=" * 60)
     
     # Save
     df_all.to_parquet(out_path)
