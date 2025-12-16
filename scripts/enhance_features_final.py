@@ -186,10 +186,10 @@ def add_vix_regime_features(df: pd.DataFrame, vix_df: pd.DataFrame) -> pd.DataFr
     vix_z = (vix_level - vix_mean) / vix_std_safe
     
     # Forward fill first, then backfill, then fill remaining with 0
-    df["feat_vix_level_z_63"] = vix_z.fillna(method='ffill').fillna(method='bfill').fillna(0)
+    df["feat_vix_level_z_63"] = vix_z.ffill().bfill().fillna(0)
     
     # VIX delta (21-day change)
-    df["feat_vix_delta_21d"] = vix_level.pct_change(21).fillna(method='ffill').fillna(method='bfill').fillna(0)
+    df["feat_vix_delta_21d"] = vix_level.pct_change(21).ffill().bfill().fillna(0)
     
     # High vol regime (z > 1.5)
     df["feat_high_vol_regime"] = (df["feat_vix_level_z_63"] > 1.5).astype(int)
