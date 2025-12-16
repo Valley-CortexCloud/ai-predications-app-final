@@ -519,7 +519,9 @@ def main():
     if not spy_fp:
         raise SystemExit("SPY not found")
     spy_df = pd.read_parquet(spy_fp)
+    logging.info(f"SPY raw columns: {list(spy_df.columns)}")
     spy_df = normalize_df_index(spy_df)
+    logging.info(f"SPY normalized columns: {list(spy_df.columns)}")
     logging.info(f"Loaded SPY: {len(spy_df)} rows")
     
     # Load VIX (optional)
