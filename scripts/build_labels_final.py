@@ -54,6 +54,8 @@ def parse_args():
     ap.add_argument("--spy-file", type=str, default=None, help="Direct path to SPY Parquet")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--debug", action="store_true")
+    ap.add_argument("--production-only", action="store_true", 
+                    help="Only output most recent date for production inference (not full history)")
     return ap.parse_args()
 
 # ---------------- Logging ----------------
@@ -662,6 +664,16 @@ def main():
     # Deduplicate by (date, symbol)
     df_all = df_all.sort_values(["date", "symbol"]).drop_duplicates(["date", "symbol"], keep="last")
     
+    # Production mode: only keep most recent date
+    if args.production_only:
+        latest_date = df_all['date'].max()
+        original_rows = len(df_all)
+        df_all = df_all[df_all['date'] == latest_date].copy()
+        print(f"\n🎯 PRODUCTION MODE: Filtered to latest date only")
+        print(f"   {original_rows} rows → {len(df_all)} rows")
+        print(f"   Latest date: {latest_date}")
+        print(f"   Symbols: {df_all['symbol'].nunique()}")
+    
     # ===== FEATURE SANITY CHECKS =====
     print("\n" + "=" * 60)
     print("FEATURE SANITY CHECKS")
@@ -724,6 +736,17 @@ def main():
             print(f"    nulls={null_count} ({null_count/len(vals)*100:.1f}%), zeros={zero_count} ({zero_count/len(vals)*100:.1f}%)")
         else:
             print(f"  ⚠️  {feat}: MISSING!")
+    
+    # Check for missing critical features
+    missing_critical = []
+    for feat in key_features:
+        if feat not in df_all.columns:
+            missing_critical.append(feat)
+    
+    if missing_critical:
+        print(f"\n⚠️  CRITICAL: Missing {len(missing_critical)} key features!")
+        print(f"   {missing_critical}")
+        print(f"   These may be required by the model!")
 
     # Check feature correlations with a few key ones
     print(f"\n🔗 Correlation check (sample features with feat_vix_level_z_63):")
