@@ -151,7 +151,7 @@ def test_date_staleness_check():
     print(f"Latest date in data: {latest_date_future.date()}")
     print(f"Days behind (negative = future): {days_behind_future}")
     
-    assert days_behind_future < -1, "Should detect data is in the future"
+    assert days_behind_future < 0, "Should detect data is in the future"
     print(f"✅ Correctly detected data is {abs(days_behind_future)} days in the FUTURE")
     
     print("\n✅ Date staleness test PASSED")

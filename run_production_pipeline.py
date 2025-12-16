@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
+import datetime as dt
 
 ROOT = Path(__file__).parent
 TICKER_CACHE_DIR = ROOT / "data_cache" / "10y_ticker_features"
@@ -63,8 +64,7 @@ def main():
     print(f"Symbols for this date: {today_df['symbol'].nunique()}")
 
     # Validate this is actually "today" or very recent
-    import datetime
-    actual_today = datetime.datetime.now().date()
+    actual_today = dt.datetime.now().date()
     days_behind = (pd.to_datetime(actual_today) - pd.to_datetime(latest_date)).days
     print(f"Days behind current date: {days_behind}")
 
@@ -93,8 +93,6 @@ def main():
     today_only_path = DATASETS_DIR / "today_only.parquet"
     today_df.to_parquet(today_only_path)
     print(f"✓ Saved {len(today_df)} rows (latest date only) to {today_only_path}\n")
-    
-    print(f"\nCurrent feat_vix_level_z_63: {current_vix_z:.2f}")
     
     if current_vix_z > 1.5:
         print("⚠️  HIGH VIX REGIME DETECTED (>1.5) — SKIPPING TRADES TODAY (model trained low-vol only)")
