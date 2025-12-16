@@ -214,20 +214,29 @@ def fetch_yahoo_events(symbol: str, start: Optional[dt.date], end: Optional[dt.d
                             print(f"[Yahoo] Error for {symbol} (lim={lim}): {e}")
                         break
             if isinstance(df, pd.DataFrame) and not df.empty:
-                break
-            # Scrape fallback if standard fails (in latest yfinance)
-            try:
-                df = t.get_earnings_dates_using_scrape(limit=lim)
-                if isinstance(df, pd.DataFrame) and not df.empty:
-                    if verbose:
-                        print(f"[Yahoo] Used scrape fallback for {symbol} (lim={lim})")
-                    break
-            except AttributeError:
                 if verbose:
-                    print("[Yahoo] Scrape fallback unavailable; update yfinance to 0.2.66+")
+                    print(f"[Yahoo] Successfully fetched {len(df)} earnings dates for {symbol} (lim={lim})")
+                break
+            # Fallback strategies if standard fails
+            try:
+                # Try accessing internal earnings history attribute
+                if hasattr(t, 'earnings_dates') and t.earnings_dates is not None:
+                    df = t.earnings_dates
+                    if isinstance(df, pd.DataFrame) and not df.empty:
+                        if verbose:
+                            print(f"[Yahoo] Used earnings_dates attribute for {symbol}")
+                        break
+                # Last resort: try the calendar property for future dates
+                if hasattr(t, 'calendar') and t.calendar is not None:
+                    cal_df = t.calendar
+                    if isinstance(cal_df, pd.DataFrame) and not cal_df.empty:
+                        df = cal_df  # Assign to df so it gets processed
+                        if verbose:
+                            print(f"[Yahoo] Used calendar fallback for {symbol}")
+                        break
             except Exception as e:
                 if verbose:
-                    print(f"[Yahoo] Scrape fallback error for {symbol}: {e}")
+                    print(f"[Yahoo] All methods failed for {symbol} (lim={lim}): {e}")
 
         if not isinstance(df, pd.DataFrame) or df.empty:
             if verbose:
@@ -243,9 +252,27 @@ def fetch_yahoo_events(symbol: str, start: Optional[dt.date], end: Optional[dt.d
                         date_series = pd.to_datetime(df[cand], errors="coerce")
                         break
             if date_series is not None:
-                # EPS columns
-                eps_est_col = next((c for c in df.columns if "estimate" in c.lower() and "eps" in c.lower()), None)
-                eps_act_col = next((c for c in df.columns if ("reported" in c.lower() or "actual" in c.lower()) and "eps" in c.lower()), None)
+                # EPS columns - try multiple possible names
+                eps_est_col = None
+                eps_act_col = None
+                
+                # Search for estimate column
+                for pattern in ['estimate', 'consensus', 'expected']:
+                    eps_est_col = next((c for c in df.columns if pattern in c.lower() and 'eps' in c.lower()), None)
+                    if eps_est_col:
+                        break
+                
+                # Search for actual column  
+                for pattern in [('actual', 'eps'), ('reported', 'eps')]:
+                    eps_act_col = next((c for c in df.columns if all(p in c.lower() for p in pattern)), None)
+                    if eps_act_col:
+                        break
+                
+                # If still not found, log available columns for debugging
+                if not eps_est_col or not eps_act_col:
+                    if verbose:
+                        print(f"[Yahoo] {symbol} columns: {list(df.columns)} - est={eps_est_col}, act={eps_act_col}")
+                
                 surpr_col = next((c for c in df.columns if "surprise" in c.lower()), None)
 
                 for i in range(len(df)):
@@ -890,12 +917,14 @@ def build_earnings_calendar(
         for prov in provider_order:
             ev = try_provider(sym, prov)
             if ev:
+                if verbose:
+                    print(f"[{i}/{len(symbols)}] ✓ {sym}: {len(ev)} events from {prov}")
                 break
 
         if ev:
             rows.extend(ev)
         else:
-            print(f"{sym}: No earnings events found (no provider data)")
+            print(f"[{i}/{len(symbols)}] ✗ {sym}: No earnings events found (tried: {', '.join(provider_order)})")
 
         if verbose or i % 25 == 0 or i == len(symbols):
             print(f"Per-symbol pass {i}/{len(symbols)} ... ({len(ev)} events for {sym})")
