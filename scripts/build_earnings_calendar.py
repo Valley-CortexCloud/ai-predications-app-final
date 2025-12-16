@@ -112,7 +112,7 @@ def parse_provider_order(raw: Optional[str]) -> List[str]:
     return [x for x in xs if x in valid] or default
 
 def list_symbols_from_cache() -> List[str]:
-    root = Path(CACHE_DIR)
+    root = Path(TICKER_CACHE_DIR)
     # Use rglob for recursive search, but limit to _2y_ files only
     files = sorted(root.rglob("*_2y_*.parquet"))
     syms = []
