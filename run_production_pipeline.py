@@ -10,7 +10,7 @@ TICKER_CACHE_DIR = ROOT / "data_cache" / "10y_ticker_features"
 ETF_CACHE_DIR = ROOT / "data_cache" / "_etf_cache"
 MODEL_DIR = ROOT / "model"
 DATASETS_DIR = ROOT / "datasets"
-PREDICTIONS_PATH = DATASETS_DIR / "predictions_today.csv"
+PREDICTIONS_PATH = DATASETS_DIR / "predictions.csv"
 
 def run(cmd):
     print(f"Running: {cmd}")
