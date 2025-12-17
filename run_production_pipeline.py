@@ -131,7 +131,9 @@ def main():
     
     # DEBUG 3: After enhance
     spy_after_enhance = inspect_spy_parquet("AFTER ENHANCE", spy_files, previous_df=spy_after_augment)
-    
+
+    run(f"python3 scripts/build_earnings_calendar.py --start 2020-01-01 --out data/earnings.csv --verbose")
+
     # 3.Build today's feature dataset (latest date only)
     run(f"python3 scripts/build_labels_final.py --cache-dir {TICKER_CACHE_DIR} --output {DATASETS_DIR}/today_features.parquet --earnings-file data/earnings.csv --production-only")
 
