@@ -28,7 +28,7 @@ def main():
     # 1. Fetch only latest data for universe + benchmarks (incremental)
     run(f"python3 scripts/fetch_history_bulletproof.py --universe sp500 --period 2y --out-dir {TICKER_CACHE_DIR} --max-workers 1")
     run(f"python3 scripts/fetch_history_bulletproof.py --universe nasdaq --period 2y --out-dir {TICKER_CACHE_DIR} --max-workers 1")
-    run(f'python3 scripts/fetch_history_bulletproof.py --tickers "SPY,^VIX,TLT,BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" --max-workers 1 --period 2y --adjusted --out-dir {ETF_CACHE_DIR}')
+    run(f'python3 scripts/fetch_history_bulletproof.py --tickers "SPY,^VIX,TLT,BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" --max-workers 1 --period 2y --out-dir {ETF_CACHE_DIR}')
     
     # 2. Augment + enhance ONLY new/changed tickers (fast)
     run(f"python3 scripts/augment_caches_fast.py --processes 2 --cache-dir {TICKER_CACHE_DIR} --overwrite")
