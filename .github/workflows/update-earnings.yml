@@ -84,17 +84,17 @@ jobs:
             git add config/ticker_universe.csv
             
             TICKERS=$(tail -n +2 config/ticker_universe.csv | wc -l)
+            DATE=$(date -u +%Y-%m-%d)
             
-            git commit -F- <<EOF
-chore: update ticker universe
-
-- Total tickers: $TICKERS
-- Updated: $(date -u +%Y-%m-%d)
-- Sources: S&P 500, NASDAQ 100
-EOF
+            git commit -m "chore: update ticker universe" \
+                       -m "" \
+                       -m "- Total tickers: $TICKERS" \
+                       -m "- Updated: $DATE" \
+                       -m "- Sources: S&P 500, NASDAQ 100"
             
             git push
           fi
+      
       
       # ============================================================
       # STEP 2: Generate Sector Map (uses ticker_universe.csv)
@@ -126,16 +126,17 @@ EOF
             MAPPED=$(tail -n +2 config/sector_map.csv | wc -l)
             GICS=$(tail -n +2 config/sector_map.csv | cut -d',' -f3 | grep -c "gics" || true)
             
-            git commit -F- <<EOF
-chore:  update sector map
-
-- Total mapped:  $MAPPED
-- GICS (S&P 500): $GICS
-- Updated:  $(date -u +%Y-%m-%d)
-EOF
+            DATE=$(date -u +%Y-%m-%d)
+            
+            git commit -m "chore:  update sector map" \
+                       -m "" \
+                       -m "- Total mapped: $MAPPED" \
+                       -m "- GICS (S&P 500): $GICS" \
+                       -m "- Updated: $DATE"
             
             git push
           fi
+      
       
       # ============================================================
       # STEP 3: Update Earnings Calendar (uses ticker_universe.csv)
@@ -181,20 +182,18 @@ EOF
             
             ROWS=$(wc -l < data/earnings. csv)
             SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
+            DATE=$(date -u +%Y-%m-%d)
             
-            git commit -F- <<EOF
-chore: update earnings calendar
-
-- Total rows: $ROWS
-- Symbols: $SYMBOLS
-- Lookback: ${{ steps.earnings_lookback. outputs.days }} days
-- Updated: $(date -u +%Y-%m-%d)
-- Source: Yahoo Finance (primary)
-EOF
+            git commit -m "chore:  update earnings calendar" \
+                       -m "" \
+                       -m "- Total rows: $ROWS" \
+                       -m "- Symbols: $SYMBOLS" \
+                       -m "- Lookback: $LOOKBACK days" \
+                       -m "- Updated: $DATE" \
+                       -m "- Source: Yahoo Finance (primary)"
             
             git push
           fi
-      
       # ============================================================
       # Summary
       # ============================================================
