@@ -23,7 +23,7 @@ jobs:
             data_cache
             data
             datasets
-          key: data-cache-v1-${{ steps.date.outputs.DATE }}-${{ github.run_number }}
+          key: data-cache-v2-${{ github.run_date }}-${{ github.run_number }}
           restore-keys: |
             data-cache-v1-${{ steps.date.outputs.DATE }}-
             data-cache-v1-
