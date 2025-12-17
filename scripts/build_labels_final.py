@@ -35,6 +35,11 @@ MIN_PRICE = 5.0
 MIN_ADV20_DOLLAR = 2_000_000.0
 NY_TZ = "America/New_York"
 
+# Production mode config
+SAMPLE_TICKER_COUNT = 5  # Number of tickers to sample when checking latest date
+MAX_STALE_DAYS = 5  # Maximum days before considering data stale
+EXCLUDE_COLUMNS = {"Open", "High", "Low", "Close", "Adj Close", "Volume", "Date", "date", "symbol"}  # Columns to exclude from features
+
 # ---------------- CLI ----------------
 
 def parse_args():
@@ -675,7 +680,7 @@ def main():
         # Find actual latest date from cache files
         cache_path = Path(args.cache_dir)
         sample_file = None
-        for ticker in df_all['symbol'].unique()[:5]:  # Check first 5 tickers
+        for ticker in df_all['symbol'].unique()[:SAMPLE_TICKER_COUNT]:  # Check first few tickers
             enhanced_files = list(cache_path.glob(f"{ticker}_*_features_enhanced.parquet"))
             if enhanced_files:
                 sample_file = enhanced_files[0]
@@ -699,7 +704,7 @@ def main():
             days_diff = (pd.to_datetime(actual_latest) - pd.to_datetime(training_latest)).days
             print(f"   Difference: {days_diff} days")
             
-            if days_diff > 5:
+            if days_diff > MAX_STALE_DAYS:
                 print(f"\n   ⚠️  WARNING: {days_diff} days of fresh data available!")
                 print(f"   Re-processing all tickers for date: {actual_latest}")
                 
@@ -731,9 +736,8 @@ def main():
                         row_data = feat_df.loc[actual_latest:actual_latest].copy()
                         
                         # Select only numeric columns (features)
-                        exclude = {"Open", "High", "Low", "Close", "Adj Close", "Volume", "Date", "date", "symbol"}
                         num_cols = [c for c in row_data.columns 
-                                    if pd.api.types.is_numeric_dtype(row_data[c]) and c not in exclude]
+                                    if pd.api.types.is_numeric_dtype(row_data[c]) and c not in EXCLUDE_COLUMNS]
                         
                         if num_cols:
                             row_data = row_data[num_cols].copy()
@@ -823,7 +827,7 @@ def main():
                 else:
                     print(f"   ⚠️  WARNING: Could not load production data, using training cutoff date")
             else:
-                print(f"   ✓ Training data is recent enough (within 5 days)")
+                print(f"   ✓ Training data is recent enough (within {MAX_STALE_DAYS} days)")
         else:
             print(f"   ⚠️  Could not find sample file to check actual latest date")
         

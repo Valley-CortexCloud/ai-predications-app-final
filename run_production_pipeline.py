@@ -64,8 +64,7 @@ def main():
     print(f"Symbols for this date: {today_df['symbol'].nunique()}")
 
     # Validate this is actually "today" or very recent
-    import datetime
-    actual_today = datetime.datetime.now().date()
+    actual_today = datetime.now().date()
     days_behind = (pd.to_datetime(actual_today) - pd.to_datetime(latest_date)).days
     print(f"Days behind current date: {days_behind}")
 
