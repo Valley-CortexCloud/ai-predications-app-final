@@ -32,6 +32,12 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
       - name: Free up disk space
         run: |
           echo "Before cleanup:"
@@ -48,12 +54,6 @@ jobs:
           
           echo "After cleanup:"
           df -h /
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
       
       - name: Install dependencies
         run: |
