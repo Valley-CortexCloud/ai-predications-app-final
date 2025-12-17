@@ -283,8 +283,14 @@ def main():
 
     sp500 = fetch_sp500_gics()
     financedb = fetch_financedb_sectors()
-    sector_rets = load_sector_etf_returns(cache_root)
-
+    sector_rets = {}
+    try:
+        if cache_root. exists():
+            sector_rets = load_sector_etf_returns(cache_root)
+            print(f"✓ Loaded {len(sector_rets)} sector ETF datasets for correlation fallback")
+    except SystemExit:
+      print("⚠️  Cache not available - correlation fallback disabled")
+      print("   Will use GICS (S&P 500) + Yahoo + FinanceDB only")
     rows = []
     for i, sym in enumerate(symbols, 1):
         chosen_spdr = ""
@@ -320,16 +326,20 @@ def main():
                     sector_name = fsec
                 else:
                     # 4) Correlation fallback (only if everything else missing)
-                    top_etf, top_val = corr_top_sector(sym, sector_rets, cache_root, lookback=args.lookback, min_overlap_days=args.min_overlap_days)
-                    chosen_spdr = top_etf or ""
-                    source = "corr_fallback" if chosen_spdr else ""
-                    sector_name = ""
-                    industry = ""
+                    if sector_rets: 
+                        top_etf, top_val = corr_top_sector(sym, sector_rets, cache_root, lookback=args.lookback, min_overlap_days=args.min_overlap_days)
+                        chosen_spdr = top_etf or ""
+                        source = "corr_fallback" if chosen_spdr else ""
+                        sector_name = ""
+                        industry = ""
 
         # For logging: compute top corr anyway (optional)
-        top_etf_log, top_val_log = corr_top_sector(sym, sector_rets, cache_root, lookback=args.lookback, min_overlap_days=args.min_overlap_days)
-
-        rows.append({
+        top_etf_log = ""
+        top_val_log = float("nan")
+        if sector_rets:
+            top_etf_log, top_val_log = corr_top_sector(sym, sector_rets, cache_root, lookback=args. lookback, min_overlap_days=args.min_overlap_days)
+        
+      rows.append({
             "symbol": sym,
             "sector_etf": chosen_spdr,
             "source": source,
