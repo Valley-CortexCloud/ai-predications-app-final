@@ -299,7 +299,7 @@ def main():
         industry = ""
 
         # 1) SP500 GICS
-        gics = sp500.get(sym)
+                gics = sp500.get(sym)
         if gics and gics in GICS_TO_SPDR:
             chosen_spdr = GICS_TO_SPDR[gics]
             source = "gics_sp500"
@@ -307,12 +307,12 @@ def main():
         else:
             # 2) Yahoo
             ysec = yind = None
-            if yf_mod is not None:
+            if yf_mod is not None: 
                 ysym = yahoo_symbol_norm(sym)
                 ysec, yind = fetch_yahoo(yf_mod, ysym)
             if ysec and ysec in GICS_TO_SPDR:
                 sp = GICS_TO_SPDR[ysec]
-                sp, src = heuristics_on_yahoo(sp, ysec, yind, sym, enabled=args.with_heuristics)
+                sp, src = heuristics_on_yahoo(sp, ysec, yind, sym, enabled=args. with_heuristics)
                 chosen_spdr = sp or ""
                 source = src
                 sector_name = ysec or ""
@@ -325,8 +325,8 @@ def main():
                     source = "financedb"
                     sector_name = fsec
                 else:
-                    # 4) Correlation fallback (only if everything else missing)
-                    if sector_rets: 
+                    # 4) Correlation fallback (only if cache available AND everything else missing)
+                    if sector_rets:  
                         top_etf, top_val = corr_top_sector(sym, sector_rets, cache_root, lookback=args.lookback, min_overlap_days=args.min_overlap_days)
                         chosen_spdr = top_etf or ""
                         source = "corr_fallback" if chosen_spdr else ""
