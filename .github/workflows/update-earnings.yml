@@ -112,7 +112,7 @@ jobs:
           echo "🏢 Generating sector map from ticker universe..."
           python3 scripts/build_sector_map.py \
             --out config/sector_map.csv \
-            --symbols-file config/ticker_universe. csv \
+            --symbols-file config/ticker_universe.csv \
             --cache-requests \
             --with-heuristics
       
@@ -126,7 +126,7 @@ jobs:
             
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add config/sector_map. csv
+            git add config/sector_map.csv
             
             MAPPED=$(tail -n +2 config/sector_map.csv | wc -l)
             GICS=$(tail -n +2 config/sector_map.csv | cut -d',' -f3 | grep -c "gics" || true)
@@ -149,7 +149,7 @@ jobs:
       - name:  Determine earnings lookback
         id: earnings_lookback
         run: |
-          if [ "${{ inputs.mode }}" == "full" ] || [ !  -f data/earnings. csv ]; then
+          if [ "${{ inputs.mode }}" == "full" ] || [ !  -f data/earnings.csv ]; then
             LOOKBACK="1095"
             echo "Full rebuild mode:  $LOOKBACK days (~3 years)"
           else
@@ -160,15 +160,15 @@ jobs:
       
       - name: Update earnings calendar
         env:
-          FINNHUB_API_KEY: ${{ secrets. FINNHUB_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           ALPHAVANTAGE_API_KEY:  ${{ secrets.ALPHAVANTAGE_API_KEY }}
         run: |
           echo "📊 Updating earnings calendar..."
           python3 scripts/update_earnings_incremental.py \
             --existing data/earnings.csv \
-            --output data/earnings. csv \
-            --ticker-universe config/ticker_universe. csv \
+            --output data/earnings.csv \
+            --ticker-universe config/ticker_universe.csv \
             --lookback-days ${{ steps.earnings_lookback.outputs.days }} \
             --provider-order yahoo,finnhub,fmp,alphavantage \
             --verbose
@@ -185,7 +185,7 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add data/earnings.csv
             
-            ROWS=$(wc -l < data/earnings. csv)
+            ROWS=$(wc -l < data/earnings.csv)
             SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
             DATE=$(date -u +%Y-%m-%d)
             
