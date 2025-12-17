@@ -224,7 +224,7 @@ def fetch_yahoo_events(symbol:  str, start: Optional[dt.date], end: Optional[dt.
         for lim_idx, lim in enumerate(limit_sweep):
             for attempt in range(1, max_attempts_per_limit + 1):
                 # Human-like delay with jitter
-                base_delay = random.uniform(1. 0, 4.0)
+                base_delay = random.uniform(1.0, 4.0)
                 jitter = random.uniform(0.5, 2.0)
                 sleep_time = base_delay + jitter
                 
@@ -238,7 +238,7 @@ def fetch_yahoo_events(symbol:  str, start: Optional[dt.date], end: Optional[dt.
                 _LAST_YAHOO_CALL = time.time()
 
                 try:
-                    df = t. get_earnings_dates(limit=lim)
+                    df = t.get_earnings_dates(limit=lim)
                     if isinstance(df, pd.DataFrame) and not df.empty:
                         if verbose:
                             print(f"[Yahoo] ✓ {symbol}:  {len(df)} rows (lim={lim})")
@@ -833,7 +833,7 @@ def build_earnings_calendar(
             # If limited: one cooldown retry
             while not evs and limited and not daily_flag and retries < av_max_retries:
                 if verbose:
-                    print(f"[AlphaV] {sym}: minute cap. Cooldown {av_retry_cooldown:.0f}s, retry {retries+1}/{av_max_retries} ...")
+                    print(f"[AlphaV] {sym}: minute cap.Cooldown {av_retry_cooldown:.0f}s, retry {retries+1}/{av_max_retries} ...")
                 time.sleep(av_retry_cooldown)
                 evs, limited, daily_flag = fetch_alpha_vantage_events(sym, av_key, start, end, verbose=verbose)
                 last_av_call = time.time()
