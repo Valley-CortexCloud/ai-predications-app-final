@@ -289,8 +289,9 @@ def main():
             sector_rets = load_sector_etf_returns(cache_root)
             print(f"✓ Loaded {len(sector_rets)} sector ETF datasets for correlation fallback")
     except SystemExit:
-      print("⚠️  Cache not available - correlation fallback disabled")
-      print("   Will use GICS (S&P 500) + Yahoo + FinanceDB only")
+        print("⚠️  Cache not available - correlation fallback disabled")
+        print("   Will use GICS (S&P 500) + Yahoo + FinanceDB only")
+
     rows = []
     for i, sym in enumerate(symbols, 1):
         chosen_spdr = ""
@@ -299,12 +300,12 @@ def main():
         industry = ""
 
         # 1) SP500 GICS
-                gics = sp500.get(sym)
+        gics = sp500.get(sym)
         if gics and gics in GICS_TO_SPDR:
             chosen_spdr = GICS_TO_SPDR[gics]
             source = "gics_sp500"
             sector_name = gics
-        else:
+        else: 
             # 2) Yahoo
             ysec = yind = None
             if yf_mod is not None: 
@@ -326,22 +327,22 @@ def main():
                     sector_name = fsec
                 else:
                     # 4) Correlation fallback (only if cache available AND everything else missing)
-                    if sector_rets:  
+                    if sector_rets: 
                         top_etf, top_val = corr_top_sector(sym, sector_rets, cache_root, lookback=args.lookback, min_overlap_days=args.min_overlap_days)
                         chosen_spdr = top_etf or ""
                         source = "corr_fallback" if chosen_spdr else ""
                         sector_name = ""
                         industry = ""
 
-        # For logging: compute top corr anyway (optional)
+        # For logging:  compute top corr only if sector_rets available
         top_etf_log = ""
         top_val_log = float("nan")
         if sector_rets:
-            top_etf_log, top_val_log = corr_top_sector(sym, sector_rets, cache_root, lookback=args. lookback, min_overlap_days=args.min_overlap_days)
-        
-      rows.append({
+            top_etf_log, top_val_log = corr_top_sector(sym, sector_rets, cache_root, lookback=args.lookback, min_overlap_days=args.min_overlap_days)
+
+        rows.append({
             "symbol": sym,
-            "sector_etf": chosen_spdr,
+            "sector_etf":  chosen_spdr,
             "source": source,
             "sector_name": sector_name,
             "industry": industry,
