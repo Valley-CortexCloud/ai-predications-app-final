@@ -108,7 +108,37 @@ def main():
 
     # 5. Load predictions (should only be for latest date now)
     pred_df = pd.read_csv(PREDICTIONS_PATH)
-
+    # ===== ADD THIS SECTION =====
+    print(f"\n{'='*60}")
+    print("FULL PREDICTION DISTRIBUTION")
+    print(f"{'='*60}")
+    print(f"Total predictions: {len(pred_df)}")
+    print(f"\nPrediction statistics:")
+    print(f"  Min:   {pred_df['pred']. min():.6f}")
+    print(f"  25%:   {pred_df['pred']. quantile(0.25):.6f}")
+    print(f"  50%:  {pred_df['pred'].median():.6f}")
+    print(f"  75%:  {pred_df['pred'].quantile(0.75):.6f}")
+    print(f"  Max:  {pred_df['pred'].max():.6f}")
+    print(f"  Mean: {pred_df['pred']. mean():.6f}")
+    print(f"  Std:  {pred_df['pred'].std():.6f}")
+    
+    positive_count = (pred_df['pred'] > 0).sum()
+    negative_count = (pred_df['pred'] < 0).sum()
+    zero_count = (pred_df['pred'] == 0).sum()
+    
+    print(f"\nPrediction signs:")
+    print(f"  Positive: {positive_count}/{len(pred_df)} ({positive_count/len(pred_df)*100:.1f}%)")
+    print(f"  Negative: {negative_count}/{len(pred_df)} ({negative_count/len(pred_df)*100:.1f}%)")
+    print(f"  Zero:  {zero_count}/{len(pred_df)}")
+    
+    print(f"\nTop 10 predictions:")
+    print(pred_df.nlargest(10, 'pred')[['symbol', 'pred']].to_string(index=False))
+    
+    print(f"\nBottom 10 predictions:")
+    print(pred_df.nsmallest(10, 'pred')[['symbol', 'pred']].to_string(index=False))
+    print(f"{'='*60}\n")
+    # ===== END ADDITION =====
+    
     print(f"\n{'='*60}")
     print("PREDICTION VALIDATION")
     print(f"{'='*60}")
