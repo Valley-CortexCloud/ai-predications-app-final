@@ -600,7 +600,7 @@ def main():
     with ProcessPoolExecutor(max_workers=args.processes) as executor:
         futures = {
             executor.submit(process_ticker, ticker, features_dir, cache_dir,
-                          sector_map, spy_df, vix_df, crypto_df, tlt_df, args.overwrite): ticker
+                          sector_map, spy_df, vix_df, crypto_df, tlt_df, args.overwrite, etf_cache_dir): ticker
             for ticker in tickers
         }
         
