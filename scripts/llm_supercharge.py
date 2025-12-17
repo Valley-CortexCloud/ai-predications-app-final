@@ -6,6 +6,7 @@ from langchain_core.output_parsers import StrOutputParser  # ← Recommended add
 import os
 import datetime
 import json  # ← Add this for safe JSON parsing
+import glob
 
 # Load top20
 csv_files = glob.glob("datasets/top20_*.csv")
