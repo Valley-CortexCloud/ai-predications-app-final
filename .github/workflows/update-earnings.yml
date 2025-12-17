@@ -1,29 +1,40 @@
-name: Update Earnings Calendar
+name: Update Earnings Calendar (Yahoo)
 
 on:
-  schedule: 
-    # Run every Monday at 2 AM UTC (after market close Sunday)
-    - cron: '0 2 * * 1'
-  workflow_dispatch:  # Manual trigger
+  schedule:
+    # Run every Monday at 6 AM UTC (after weekend)
+    - cron: '0 6 * * 1'
+  workflow_dispatch:  
     inputs:
-      lookback_days: 
-        description: 'Days to look back for earnings updates'
+      mode:
+        description: 'Update mode'
         required: false
-        default: '90'
+        type: choice
+        options: 
+          - incremental  # Default:  last 6 months
+          - full         # Rebuild:  last 3 years
+        default:  'incremental'
+      
+      lookback_days: 
+        description: 'Custom lookback days (overrides mode)'
+        required: false
+        default: ''
 
 jobs:
   update-earnings: 
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # 🔥 LONGER TIMEOUT! 
+    timeout-minutes: 120  # 2 hours for Yahoo scraping
     
-    steps:
+    steps: 
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses:  actions/setup-python@v5
         with:
           python-version: '3.12'
-
+          cache: 'pip'
       - name: Free up disk space (manual - safe and effective)
         run: |
           echo "Before cleanup:"
@@ -40,11 +51,30 @@ jobs:
 
           echo "After cleanup:"
           df -h /
-      
-      - name:  Install dependencies
+          
+      - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+          pip install --upgrade yfinance  # Ensure latest yfinance
+      
+      - name: Set lookback days
+        id: lookback
+        run: |
+          if [ -n "${{ github.event.inputs.lookback_days }}" ]; then
+            # Custom override
+            LOOKBACK="${{ github.event.inputs.lookback_days }}"
+            echo "Using custom lookback: $LOOKBACK days"
+          elif [ "${{ github.event.inputs.mode }}" == "full" ] || [ !  -f data/earnings.csv ]; then
+            # Full rebuild:  3 years
+            LOOKBACK="1095"
+            echo "Full rebuild mode:  $LOOKBACK days (~3 years)"
+          else
+            # Incremental:  6 months
+            LOOKBACK="180"
+            echo "Incremental mode: $LOOKBACK days (~6 months)"
+          fi
+          echo "days=$LOOKBACK" >> $GITHUB_OUTPUT
       
       - name: Update earnings calendar
         env:
@@ -55,37 +85,62 @@ jobs:
           python3 scripts/update_earnings_incremental.py \
             --existing data/earnings.csv \
             --output data/earnings.csv \
-            --lookback-days ${{ github.event.inputs.lookback_days || 90 }} \
+            --lookback-days ${{ steps.lookback.outputs.days }} \
+            --provider-order yahoo,finnhub,fmp,alphavantage \
             --verbose
+      
       
       - name: Check for changes
         id: check_changes
         run: |
-          if git diff --quiet data/earnings.csv; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-          else
-            echo "changed=true" >> $GITHUB_OUTPUT
-          fi
+          git diff --exit-code data/earnings.csv || echo "changed=true" >> $GITHUB_OUTPUT
       
-      - name: Commit and push if changed
+      - name:  Commit and push if changed
         if: steps.check_changes.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/earnings.csv
-          git commit -m "chore: update earnings calendar ($(date -u +%Y-%m-%d))"
+          
+          ROWS=$(wc -l < data/earnings.csv)
+          SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
+          
+          # Option 1: Use heredoc (cleanest for multi-line)
+          DATE=$(date -u +%Y-%m-%d)
+    
+          # Option 3: Single-line with escaped newlines
+          git commit -m "chore: update earnings calendar" \
+               -m "" \
+               -m "- Total rows: $ROWS" \
+               -m "- Symbols:  $SYMBOLS" \
+               -m "- Updated: $DATE" \
+               -m "- Source: Yahoo Finance (primary)"
           git push
-      
+          
       - name: Summary
         run: |
-          echo "## Earnings Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 Earnings Update Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          if [ "${{ steps.check_changes.outputs.changed }}" == "true" ]; then
+          if [ -f data/earnings.csv ]; then
             ROWS=$(wc -l < data/earnings.csv)
-            echo "✅ **Earnings calendar updated!**" >> $GITHUB_STEP_SUMMARY
-            echo "- Total rows: $ROWS" >> $GITHUB_STEP_SUMMARY
-            echo "- Committed to repository" >> $GITHUB_STEP_SUMMARY
+            SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
+            OLDEST=$(tail -n +2 data/earnings.csv | cut -d',' -f2 | sort | head -1)
+            NEWEST=$(tail -n +2 data/earnings.csv | cut -d',' -f2 | sort | tail -1)
+            
+            if [ "${{ steps.check_changes.outputs. changed }}" == "true" ]; then
+              echo "### ✅ Updated Successfully" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "### ℹ️ No Changes Detected" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Rows | $ROWS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Symbols | $SYMBOLS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Date Range | $OLDEST to $NEWEST |" >> $GITHUB_STEP_SUMMARY
+            echo "| Primary Source | Yahoo Finance |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "ℹ️ No changes detected" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Error:** data/earnings.csv not found!" >> $GITHUB_STEP_SUMMARY
           fi
