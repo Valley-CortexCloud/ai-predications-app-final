@@ -402,7 +402,7 @@ def add_theme_acceleration(df: pd.DataFrame) -> pd.DataFrame:
 def process_ticker(ticker: str, features_dir: Path, cache_dir: Path,
                    sector_map: Dict[str, str], spy_df: pd.DataFrame,
                    vix_df: Optional[pd.DataFrame], crypto_df: Optional[pd.DataFrame],
-                   tlt_df: Optional[pd.DataFrame], overwrite: bool) -> dict:
+                   tlt_df:  Optional[pd.DataFrame], overwrite: bool, etf_cache_dir: Path) -> dict:
     
     feat_path = features_dir / f"{ticker}_features.parquet"
     if not feat_path.exists():
@@ -437,7 +437,8 @@ def process_ticker(ticker: str, features_dir: Path, cache_dir: Path,
         # Sector-relative
         if ticker in sector_map:
             sector_etf = sector_map[ticker]
-            sector_fp = find_cache_for_ticker(sector_etf, str(cache_dir))
+            etf_cache_dir = Path(cache_dir).parent / '_etf_cache'
+            sector_fp = find_cache_for_ticker(sector_etf, str(etf_cache_dir))
             if sector_fp and sector_fp.exists():
                 sector_df = pd.read_parquet(sector_fp)
                 sector_df = normalize_df_index(sector_df)
@@ -548,7 +549,8 @@ def main():
     sector_map = load_sector_map(args.sector_map)
     
     # Load SPY (required)
-    spy_fp = find_cache_for_ticker("SPY", str(cache_dir))
+    etf_cache_dir = Path(args.cache_dir).parent / '_etf_cache'
+    spy_fp = find_cache_for_ticker("SPY", str(etf_cache_dir))
     if not spy_fp:
         raise SystemExit("SPY not found")
     spy_df = pd.read_parquet(spy_fp)
@@ -559,7 +561,7 @@ def main():
     
     # Load VIX (optional)
     vix_df = None
-    vix_fp = find_cache_for_ticker("^VIX", str(cache_dir)) or find_cache_for_ticker("VIX", str(cache_dir))
+    vix_fp = find_cache_for_ticker("^VIX", str(etf_cache_dir)) or find_cache_for_ticker("VIX", str(etf_cache_dir))
     if vix_fp:
         vix_df = pd.read_parquet(vix_fp)
         vix_df = normalize_df_index(vix_df)
@@ -567,7 +569,7 @@ def main():
     
     # Load crypto (optional)
     crypto_df = None
-    crypto_fp = find_cache_for_ticker(DEFAULT_CRYPTO_PROXY, str(cache_dir))
+    crypto_fp = find_cache_for_ticker(DEFAULT_CRYPTO_PROXY, str(etf_cache_dir))
     if crypto_fp:
         crypto_df = pd.read_parquet(crypto_fp)
         crypto_df = normalize_df_index(crypto_df)
@@ -575,7 +577,7 @@ def main():
     
     # Load TLT (optional)
     tlt_df = None
-    tlt_fp = find_cache_for_ticker("TLT", str(cache_dir))
+    tlt_fp = find_cache_for_ticker("TLT", str(etf_cache_dir))
     if tlt_fp:
         tlt_df = pd.read_parquet(tlt_fp)
         tlt_df = normalize_df_index(tlt_df)
