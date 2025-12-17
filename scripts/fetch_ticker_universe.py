@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
 Fetch ticker universe from authoritative sources (S&P 500 + NASDAQ 100).
-Outputs: config/ticker_universe.csv with columns: symbol, name, exchange
+Outputs:  config/ticker_universe.csv with columns: symbol, name, exchange
 
 Sources:
   - Wikipedia S&P 500
   - Wikipedia NASDAQ 100
-  - Optional: Russell 2000, Dow 30
 """
 import pandas as pd
 import requests
@@ -14,11 +13,17 @@ from pathlib import Path
 from typing import List, Set
 import sys
 
+# ✅ ADD USER-AGENT HEADERS
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+}
+
 def fetch_sp500() -> pd.DataFrame:
     """Fetch S&P 500 from Wikipedia."""
     url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
     try:
-        tables = pd.read_html(url)
+        # ✅ Pass headers to read_html via requests
+        tables = pd.read_html(url, storage_options={'User-Agent': HEADERS['User-Agent']})
         df = tables[0]. copy()
         
         # Normalize symbols
@@ -29,7 +34,7 @@ def fetch_sp500() -> pd.DataFrame:
         })
         
         # Standardize columns
-        df = df. rename(columns={
+        df = df.rename(columns={
             "Symbol": "symbol",
             "Security": "name",
         })
@@ -48,8 +53,9 @@ def fetch_nasdaq100() -> pd.DataFrame:
     """Fetch NASDAQ 100 from Wikipedia."""
     url = "https://en.wikipedia.org/wiki/Nasdaq-100"
     try:
-        tables = pd.read_html(url)
-        df = tables[4].copy()  # Usually table 4, may need adjustment
+        # ✅ Pass headers to read_html
+        tables = pd.read_html(url, storage_options={'User-Agent': HEADERS['User-Agent']})
+        df = tables[4].copy()  # Usually table 4
         
         df["Ticker"] = df["Ticker"]. astype(str).str.upper().str.strip()
         
@@ -79,17 +85,24 @@ def main():
     print(f"✓ S&P 500: {len(sp500_df)} tickers")
     print(f"✓ NASDAQ 100: {len(nasdaq100_df)} tickers")
     
+    # ✅ EXIT IF NO DATA FETCHED
+    if len(sp500_df) == 0 and len(nasdaq100_df) == 0:
+        print("\n❌ FATAL: Could not fetch any ticker data!")
+        print("   Wikipedia may be blocking requests.")
+        print("   Check network connectivity or try manual fetch.")
+        return 1
+    
     # Combine and deduplicate (S&P 500 takes priority)
     combined = pd.concat([sp500_df, nasdaq100_df], ignore_index=True)
     
     # Dedupe:  keep first occurrence (S&P 500 prioritized)
-    combined = combined.drop_duplicates(subset=["symbol"], keep="first")
+    combined = combined. drop_duplicates(subset=["symbol"], keep="first")
     
     # Sort alphabetically
     combined = combined.sort_values("symbol").reset_index(drop=True)
     
     # Filter out ETFs and special cases
-    exclude = {"SPY", "QQQ", "DIA", "IWM"}  # Major ETFs
+    exclude = {"SPY", "QQQ", "DIA", "IWM"}
     combined = combined[~combined["symbol"].isin(exclude)]
     
     print(f"\n📊 Final Universe:")
