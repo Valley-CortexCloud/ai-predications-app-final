@@ -1,0 +1,74 @@
+name: Update Earnings Calendar
+
+on:
+  schedule: 
+    # Run every Monday at 2 AM UTC (after market close Sunday)
+    - cron: '0 2 * * 1'
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      lookback_days: 
+        description: 'Days to look back for earnings updates'
+        required: false
+        default: '90'
+
+jobs:
+  update-earnings: 
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # 🔥 LONGER TIMEOUT! 
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name:  Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Update earnings calendar
+        env:
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          ALPHAVANTAGE_API_KEY:  ${{ secrets.ALPHAVANTAGE_API_KEY }}
+        run: |
+          python3 scripts/update_earnings_incremental.py \
+            --existing data/earnings.csv \
+            --output data/earnings.csv \
+            --lookback-days ${{ github.event.inputs.lookback_days || 90 }} \
+            --verbose
+      
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet data/earnings.csv; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Commit and push if changed
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/earnings.csv
+          git commit -m "chore: update earnings calendar ($(date -u +%Y-%m-%d))"
+          git push
+      
+      - name: Summary
+        run: |
+          echo "## Earnings Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.check_changes.outputs.changed }}" == "true" ]; then
+            ROWS=$(wc -l < data/earnings.csv)
+            echo "✅ **Earnings calendar updated!**" >> $GITHUB_STEP_SUMMARY
+            echo "- Total rows: $ROWS" >> $GITHUB_STEP_SUMMARY
+            echo "- Committed to repository" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ No changes detected" >> $GITHUB_STEP_SUMMARY
+          fi
