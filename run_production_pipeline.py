@@ -99,10 +99,31 @@ def main():
     
     # DEBUG 1: After fetch
     spy_after_fetch = inspect_spy_parquet("AFTER FETCH", spy_files)
-    
+
+    print(f"\n{'='*60}")
+    print("DEBUG: ETF FILES BEFORE AUGMENT")
+    print(f"{'='*60}")
+    etf_files = list(ETF_CACHE_DIR.glob("*.parquet"))
+    print(f"Files in {ETF_CACHE_DIR}:")
+    for f in sorted(etf_files):
+        print(f"  {f. name}")
+    print(f"{'='*60}\n")
     # 2.Augment + enhance ONLY new/changed tickers (fast)
     run(f"python3 scripts/augment_caches_fast.py --processes 2 --cache-dir {TICKER_CACHE_DIR} --overwrite")
-    
+    print(f"\n{'='*60}")
+    print("DEBUG: ETF FILES AFTER AUGMENT")
+    print(f"{'='*60}")
+    etf_files_after = list(ETF_CACHE_DIR.glob("*.parquet"))
+    print(f"Files in {ETF_CACHE_DIR}:")
+    for f in sorted(etf_files_after):
+        print(f"  {f.name}")
+        
+    new_files = set(etf_files_after) - set(etf_files)
+    if new_files:
+        print(f"\n⚠️  NEW FILES CREATED:")
+        for f in new_files:
+            print(f"  {f.name}")
+    print(f"{'='*60}\n")
     # DEBUG 2: After augment
     spy_after_augment = inspect_spy_parquet("AFTER AUGMENT", spy_files, previous_df=spy_after_fetch)
     
