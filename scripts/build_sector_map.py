@@ -35,9 +35,8 @@ import pandas as pd
 import sys
 import requests
 
-# Project default CACHE_DIR (used if --cache-root not provided)
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from data_paths import CACHE_DIR  # your data_cache root
+ROOT = Path(__file__).parent.parent
+CACHE_DIR = ROOT / "data_cache" / "10y_ticker_features"
 
 SECTOR_ETFS = ["XLB","XLC","XLE","XLF","XLI","XLK","XLP","XLRE","XLU","XLV","XLY"]
 
