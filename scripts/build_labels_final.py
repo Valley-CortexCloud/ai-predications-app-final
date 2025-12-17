@@ -40,6 +40,10 @@ SAMPLE_TICKER_COUNT = 5  # Number of tickers to sample when checking latest date
 MAX_STALE_DAYS = 5  # Maximum days before considering data stale
 EXCLUDE_COLUMNS = {"Open", "High", "Low", "Close", "Adj Close", "Volume", "Date", "date", "symbol"}  # Columns to exclude from features
 
+# Earnings config
+EARNINGS_LOOKBACK_DAYS = 90  # Days to look back for recent earnings in statistics
+EARNINGS_TOLERANCE_DAYS = 120  # Maximum days to look back for merge_asof (~1 quarter)
+
 # ---------------- CLI ----------------
 
 def parse_args():
@@ -195,10 +199,13 @@ def forward_return(s: pd.Series, H: int) -> pd.Series:
 
 # ---------------- Earnings (calendar only) ----------------
 
-def load_earnings_events(file_path: Optional[str]) -> Dict[str, pd.DataFrame]:
-    """Load earnings calendar; returns dict[symbol -> DataFrame(reaction_date, eps_surprise_pct)]"""
+def load_earnings_events(file_path: Optional[str]) -> pd.DataFrame:
+    """
+    Load earnings calendar as a DataFrame for merge_asof.
+    Returns DataFrame with columns: symbol, date, eps_actual, eps_estimate, eps_surprise_pct
+    """
     if not file_path:
-        return {}
+        return pd.DataFrame(columns=['symbol', 'date', 'eps_actual', 'eps_estimate', 'eps_surprise_pct'])
     
     df = pd.read_csv(file_path)
     
@@ -213,36 +220,58 @@ def load_earnings_events(file_path: Optional[str]) -> Dict[str, pd.DataFrame]:
         print(f"  Rows with both EPS actual & estimate: {has_both} / {len(df)} ({has_both/len(df)*100:.1f}%)")
     
     if df.empty:
-        return {}
+        return pd.DataFrame(columns=['symbol', 'date', 'eps_actual', 'eps_estimate', 'eps_surprise_pct'])
     
+    # Map column names (case-insensitive)
     cm = {c.lower(): c for c in df.columns}
     sym_col = cm.get("symbol") or cm.get("ticker")
     if not sym_col:
-        return {}
+        return pd.DataFrame(columns=['symbol', 'date', 'eps_actual', 'eps_estimate', 'eps_surprise_pct'])
     
     earn_col = cm.get("earnings_date") or cm.get("reportdate")
     sup_col = cm.get("eps_surprise_pct") or cm.get("surprise_pct")
     
-    df["_symbol"] = df[sym_col].astype(str).str.upper()
-    df["_earnings_date"] = to_ny_date_col(df[earn_col]) if earn_col else pd.NaT
-    df["_eps_surprise_pct"] = pd.to_numeric(df[sup_col], errors="coerce") if sup_col else np.nan
+    # Extract and normalize columns
+    df["symbol"] = df[sym_col].astype(str).str.upper()
+    df["date"] = to_ny_date_col(df[earn_col]) if earn_col else pd.NaT
+    df["eps_surprise_pct"] = pd.to_numeric(df[sup_col], errors="coerce") if sup_col else np.nan
     
-    df = df.dropna(subset=["_earnings_date"])
-    df = df.sort_values(["_symbol", "_earnings_date"]).drop_duplicates(["_symbol", "_earnings_date"], keep="last")
+    # Try to get eps_actual and eps_estimate
+    eps_actual_col = cm.get("eps_actual") or cm.get("epsactual") or cm.get("actual")
+    eps_estimate_col = cm.get("eps_estimate") or cm.get("epsestimate") or cm.get("estimate")
     
-    out: Dict[str, pd.DataFrame] = {}
-    for sym, g in df.groupby("_symbol"):
-        out[sym] = g[["_earnings_date", "_eps_surprise_pct"]].rename(columns={
-            "_earnings_date": "earnings_date",
-            "_eps_surprise_pct": "eps_surprise_pct"
-        }).reset_index(drop=True)
+    df["eps_actual"] = pd.to_numeric(df[eps_actual_col], errors="coerce") if eps_actual_col else np.nan
+    df["eps_estimate"] = pd.to_numeric(df[eps_estimate_col], errors="coerce") if eps_estimate_col else np.nan
     
-    logging.info(f"Loaded {sum(len(v) for v in out.values()):,} earnings events across {len(out)} symbols")
-    return out
+    # Compute surprise_pct if missing but we have actual & estimate (vectorized)
+    if df["eps_surprise_pct"].isna().all() and eps_actual_col and eps_estimate_col:
+        # Vectorized computation
+        has_both = df["eps_actual"].notna() & df["eps_estimate"].notna()
+        non_zero_estimate = df["eps_estimate"] != 0
+        valid = has_both & non_zero_estimate
+        
+        # Compute surprise percentage for valid rows
+        df.loc[valid, "eps_surprise_pct"] = (
+            (df.loc[valid, "eps_actual"] - df.loc[valid, "eps_estimate"]) / 
+            df.loc[valid, "eps_estimate"].abs() * 100
+        )
+    
+    
+    # Clean and sort
+    df = df.dropna(subset=["date"])
+    df = df[["symbol", "date", "eps_actual", "eps_estimate", "eps_surprise_pct"]].copy()
+    df = df.sort_values(["symbol", "date"]).drop_duplicates(["symbol", "date"], keep="last")
+    
+    logging.info(f"Loaded {len(df):,} earnings events across {df['symbol'].nunique()} symbols")
+    return df
 
 def add_earnings_calendar_features(dates: pd.DatetimeIndex, symbol: str, 
                                    earn_events: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Add calendar-based earnings features (days_to_earn, prev_surprise, etc.)"""
+    """
+    DEPRECATED: This function is no longer used. Earnings data is now merged using pd.merge_asof.
+    
+    Add calendar-based earnings features (days_to_earn, prev_surprise, etc.)
+    """
     out = pd.DataFrame({"date": dates})
     out["feat_days_to_earn"] = np.nan
     out["feat_days_since_earn"] = np.nan
@@ -416,8 +445,8 @@ def main():
     bench_df = pd.DataFrame({"date": to_ny_date_col(bench_fwd.index), "bench_ret_63d": bench_fwd.values})
     logging.info(f"Loaded SPY benchmark: {len(bench_df):,} forward returns")
     
-    # Load earnings calendar
-    earn_events = load_earnings_events(args.earnings_file) if args.earnings_file else {}
+    # Load earnings calendar (returns DataFrame for merge_asof)
+    earnings_df = load_earnings_events(args.earnings_file) if args.earnings_file else pd.DataFrame()
     
     # Process each ticker
     rows = []
@@ -548,11 +577,6 @@ def main():
             else:
                 logging.warning(f"{ticker}: features file not found (tried {fp.parent}/{ticker_upper}_*_features*.parquet)")
             
-            # Add earnings calendar features
-            if earn_events:
-                earn_feat = add_earnings_calendar_features(pd.DatetimeIndex(base["date"]), ticker, earn_events)
-                base = base.merge(earn_feat, on="date", how="left")
-            
             rows.append(base)
             
         except Exception as e:
@@ -568,6 +592,72 @@ def main():
     
     logging.info(f"Combined dataset: {len(df_all):,} rows, {df_all['symbol'].nunique()} symbols")
     
+    # ============================================================
+    # MERGE EARNINGS DATA using merge_asof (most recent earnings before each date)
+    # ============================================================
+    
+    if not earnings_df.empty:
+        logging.info("🔧 Merging earnings data with merge_asof...")
+        
+        # Log earnings date range
+        print(f"\n📊 Earnings Data Statistics:")
+        print(f"  Total earnings events: {len(earnings_df):,}")
+        print(f"  Symbols with earnings: {earnings_df['symbol'].nunique()}")
+        print(f"  Date range: {earnings_df['date'].min()} to {earnings_df['date'].max()}")
+        
+        # Recent earnings (using configured lookback)
+        recent_cutoff = pd.Timestamp.now() - pd.Timedelta(days=EARNINGS_LOOKBACK_DAYS)
+        recent_earnings = earnings_df[pd.to_datetime(earnings_df['date']) >= recent_cutoff]
+        print(f"  Earnings in last {EARNINGS_LOOKBACK_DAYS} days: {len(recent_earnings)} events for {recent_earnings['symbol'].nunique()} symbols")
+        
+        # Before merge
+        before_merge = len(df_all)
+        
+        # Sort for merge_asof (required)
+        df_all = df_all.sort_values(['symbol', 'date'])
+        earnings_df = earnings_df.sort_values(['symbol', 'date'])
+        
+        # Perform merge_asof to get most recent earnings BEFORE each prediction date
+        df_all = pd.merge_asof(
+            df_all,
+            earnings_df[['symbol', 'date', 'eps_surprise_pct', 'eps_actual', 'eps_estimate']],
+            on='date',
+            by='symbol',
+            direction='backward',  # Get most recent earnings BEFORE this date
+            tolerance=pd.Timedelta(days=EARNINGS_TOLERANCE_DAYS),  # Don't look back more than 1 quarter
+            suffixes=('', '_earnings')
+        )
+        
+        # After merge - log statistics
+        after_merge = len(df_all)
+        stocks_with_earnings = df_all['eps_surprise_pct'].notna().sum()
+        pct_coverage = stocks_with_earnings / len(df_all) * 100 if len(df_all) > 0 else 0
+        
+        print(f"\n📈 Earnings Merge Results:")
+        print(f"  Rows before/after merge: {before_merge:,} → {after_merge:,}")
+        print(f"  Stocks with earnings data: {stocks_with_earnings:,} / {len(df_all):,} ({pct_coverage:.1f}%)")
+        
+        # Sample of merged earnings data
+        sample = df_all[df_all['eps_surprise_pct'].notna()][['symbol', 'date', 'eps_actual', 'eps_estimate', 'eps_surprise_pct']].head(10)
+        if len(sample) > 0:
+            print(f"\n  Sample of merged earnings data:")
+            print(sample.to_string(index=False))
+        
+        # Rename earnings columns to match expected feature names
+        if 'eps_surprise_pct' in df_all.columns:
+            df_all['feat_prev_earn_surprise_pct'] = df_all['eps_surprise_pct']
+        if 'eps_actual' in df_all.columns:
+            df_all['feat_eps_actual'] = df_all['eps_actual']
+        if 'eps_estimate' in df_all.columns:
+            df_all['feat_eps_estimate'] = df_all['eps_estimate']
+        
+        logging.info(f"✅ Earnings data merged: {pct_coverage:.1f}% coverage")
+    else:
+        logging.warning("⚠️  No earnings data loaded, earnings quality will be zero")
+        df_all['feat_prev_earn_surprise_pct'] = 0.0
+        df_all['feat_eps_actual'] = np.nan
+        df_all['feat_eps_estimate'] = np.nan
+    
     # ===== ADD CROSS-SECTIONAL FEATURES (AFTER COMBINING ALL STOCKS) =====
     df_all = add_cross_sectional_ranks(df_all)
     df_all = add_cross_sectional_z_scores(df_all)
@@ -577,25 +667,72 @@ def main():
     
     logging.info("🔧 Computing earnings quality...")
     
-    if 'feat_earn_surprise_streak' in df_all.columns and 'feat_prev_earn_surprise_pct' in df_all.columns:
+    if 'feat_prev_earn_surprise_pct' in df_all.columns:
         # Convert to float and handle NaN
-        streak = df_all['feat_earn_surprise_streak'].fillna(0).astype(float)
         surprise = df_all['feat_prev_earn_surprise_pct'].fillna(0).astype(float).clip(-100, 300)
         
-        # Compute quality score
-        df_all['feat_earnings_quality'] = (streak * surprise).fillna(0).clip(-500, 1500)
+        # Compute quality score from surprise percentage
+        # Positive surprises are good, negative are bad
+        # Scale: -100% to +300% surprise → quality score
+        df_all['feat_earnings_quality'] = surprise.clip(-100, 300)
         
         # Log results
         non_zero = (df_all['feat_earnings_quality'] != 0).sum()
+        non_null = df_all['feat_prev_earn_surprise_pct'].notna().sum()
         logging.info(f"✅ Earnings quality: {non_zero:,} / {len(df_all):,} non-zero ({non_zero/len(df_all)*100:.1f}%)")
+        logging.info(f"   Non-null earnings surprises: {non_null:,} / {len(df_all):,} ({non_null/len(df_all)*100:.1f}%)")
         
         # Sample for verification
         if non_zero > 0:
-            sample = df_all[df_all['feat_earnings_quality'] != 0][['symbol', 'date', 'feat_earn_surprise_streak', 'feat_prev_earn_surprise_pct', 'feat_earnings_quality']].head(5)
+            sample = df_all[df_all['feat_earnings_quality'] != 0][['symbol', 'date', 'feat_prev_earn_surprise_pct', 'feat_earnings_quality']].head(10)
             logging.info(f"Sample non-zero earnings quality:\n{sample}")
+        
+        # Statistics
+        print(f"\n📊 Earnings Quality Statistics:")
+        print(f"  Min: {df_all['feat_earnings_quality'].min():.2f}")
+        print(f"  Max: {df_all['feat_earnings_quality'].max():.2f}")
+        print(f"  Mean: {df_all['feat_earnings_quality'].mean():.2f}")
+        print(f"  Median: {df_all['feat_earnings_quality'].median():.2f}")
+        print(f"  Std: {df_all['feat_earnings_quality'].std():.2f}")
     else:
         logging.warning("⚠️  Earnings columns not found, setting earnings quality to 0")
         df_all['feat_earnings_quality'] = 0.0
+    
+    # ============================================================
+    # VIX FEATURES VALIDATION
+    # ============================================================
+    
+    logging.info("🔧 Validating VIX features...")
+    
+    vix_features = ['feat_vix_level_z_63', 'feat_high_vol_regime', 'feat_beta_in_high_vol']
+    vix_present = [f for f in vix_features if f in df_all.columns]
+    
+    if vix_present:
+        print(f"\n📊 VIX Features Validation:")
+        for feat in vix_present:
+            vals = df_all[feat]
+            non_null = vals.notna().sum()
+            print(f"  {feat}:")
+            print(f"    Min: {vals.min():.4f}, Max: {vals.max():.4f}, Mean: {vals.mean():.4f}")
+            print(f"    Non-null: {non_null} / {len(df_all)} ({non_null/len(df_all)*100:.1f}%)")
+        
+        # Show regime distribution
+        if 'feat_high_vol_regime' in df_all.columns:
+            high_vol_count = (df_all['feat_high_vol_regime'] == 1).sum()
+            low_vol_count = (df_all['feat_high_vol_regime'] == 0).sum()
+            print(f"\n  VIX Regime Distribution:")
+            print(f"    High volatility regime (feat_high_vol_regime=1): {high_vol_count} ({high_vol_count/len(df_all)*100:.1f}%)")
+            print(f"    Low volatility regime (feat_high_vol_regime=0): {low_vol_count} ({low_vol_count/len(df_all)*100:.1f}%)")
+        
+        # Sample VIX values
+        if 'feat_vix_level_z_63' in df_all.columns:
+            sample_vix = df_all[['symbol', 'date', 'feat_vix_level_z_63', 'feat_high_vol_regime']].head(5)
+            print(f"\n  Sample VIX values:")
+            print(sample_vix.to_string(index=False))
+        
+        logging.info(f"✅ VIX features validated: {len(vix_present)} features present")
+    else:
+        logging.warning("⚠️  No VIX features found in dataset")
     
     # ============================================================
     # COMPUTE COMPOSITE QUALITY (cross-sectional, per-date)
@@ -620,8 +757,8 @@ def main():
     
     # 3. Earnings quality (scaled to 0-1)
     if 'feat_earnings_quality' in df_all.columns:
-        # Map [-500, 1500] → [0, 1]
-        earn_score = ((df_all['feat_earnings_quality'] + 500) / 2000).clip(0, 1)
+        # Map [-100, 300] → [0, 1]
+        earn_score = ((df_all['feat_earnings_quality'] + 100) / 400).clip(0, 1)
         quality_parts.append(earn_score.fillna(0.5))
         logging.info("   ✓ Earnings score added")
     
@@ -804,7 +941,7 @@ def main():
                         quality_parts.append(df_all['feat_in_uptrend'])
                     
                     if 'feat_earnings_quality' in df_all.columns:
-                        earn_score = ((df_all['feat_earnings_quality'] + 500) / 2000).clip(0, 1)
+                        earn_score = ((df_all['feat_earnings_quality'] + 100) / 400).clip(0, 1)
                         quality_parts.append(earn_score.fillna(0.5))
                     
                     if quality_parts:
