@@ -8,7 +8,15 @@ import datetime
 import json  # ← Add this for safe JSON parsing
 
 # Load top20
-df = pd.read_csv("datasets/top20_latest.csv")  # your filename
+csv_files = glob.glob("datasets/top20_*.csv")
+if not csv_files:
+    raise FileNotFoundError("No top20_*.csv file found in datasets/ — artifact download failed?")
+if len(csv_files) > 1:
+    print("Warning: Multiple top20 files found, using the first one.")
+
+csv_path = csv_files[0]
+print(f"Loading top20 data from: {csv_path}")
+df = pd.read_csv(csv_path)
 stocks = df['symbol'].tolist()[:20]
 
 # LLM setup (Groq example — fastest)
