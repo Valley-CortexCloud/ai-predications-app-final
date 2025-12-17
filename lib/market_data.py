@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Market data utilities for fetching and caching SPY and sector ETF histories."""
-import yfinance as yf
+"""Market data utilities for loading SPY and sector ETF histories from cache."""
 import pandas as pd
 from pathlib import Path
 from typing import Optional
-import time
 
 # Sector ETF mapping
 SECTOR_ETFS = {
@@ -28,88 +26,75 @@ ETF_CACHE_DIR = Path('data_cache/_etf_cache')
 
 
 def get_etf_cache_dir() -> Path:
-    """Get or create the ETF cache directory."""
-    ETF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    """Get the ETF cache directory."""
     return ETF_CACHE_DIR
 
 
-def fetch_spy_history(period: str = '5y', max_retries: int = 3) -> Optional[pd.DataFrame]:
-    """Fetch SPY history with caching.
+def fetch_spy_history(period: str = '2y', max_retries: int = 3) -> Optional[pd.DataFrame]:
+    """Load SPY history from existing cache files.
     
     Args:
-        period: History period (e.g., '5y', '10y')
-        max_retries: Maximum retry attempts
+        period: History period (e.g., '2y', '5y', '10y')
+        max_retries:  Ignored (kept for backwards compatibility)
         
-    Returns:
-        DataFrame with SPY OHLCV data or None on failure
+    Returns: 
+        DataFrame with SPY OHLCV data or None if not found
     """
     cache_dir = get_etf_cache_dir()
-    cache_file = cache_dir / f'SPY_{period}_adj.parquet'
     
-    # Try to load from cache
-    if cache_file.exists():
-        try:
-            df = pd.read_parquet(cache_file)
-            # Check if cache is recent (less than 1 day old for daily updates)
-            if not df.empty and (pd.Timestamp.now() - df.index[-1]) < pd.Timedelta(days=1):
-                return df
-        except Exception:
-            pass
+    # Try multiple filename patterns (raw, adj, or no suffix)
+    possible_files = [
+        cache_dir / f'SPY_{period}_raw.parquet',
+        cache_dir / f'SPY_{period}_adj.parquet',
+        cache_dir / f'SPY_{period}.parquet',
+    ]
     
-    # Fetch from yfinance
-    for attempt in range(max_retries):
-        try:
-            spy = yf.Ticker('SPY')
-            hist = spy.history(period=period, auto_adjust=True)
-            if hist is not None and len(hist) > 0:
-                hist.to_parquet(cache_file, compression='zstd')
-                return hist
-        except Exception as e:
-            if attempt == max_retries - 1:
-                print(f"Failed to fetch SPY after {max_retries} attempts: {e}")
-                return None
-            time.sleep(2 ** attempt)  # Exponential backoff
+    for cache_file in possible_files: 
+        if cache_file.exists():
+            try:
+                df = pd.read_parquet(cache_file)
+                if not df.empty:
+                    print(f"  Loaded SPY from:  {cache_file. name}")
+                    return df
+            except Exception as e:
+                print(f"  Warning: Failed to load {cache_file.name}: {e}")
+                continue
     
+    print(f"  ⚠️  SPY not found in {cache_dir} (tried {period}_raw. parquet, {period}_adj. parquet)")
     return None
 
 
-def fetch_sector_etf_history(etf_symbol: str, period: str = '5y', max_retries: int = 3) -> Optional[pd.DataFrame]:
-    """Fetch sector ETF history with caching.
+def fetch_sector_etf_history(etf_symbol: str, period:  str = '2y', max_retries: int = 3) -> Optional[pd.DataFrame]: 
+    """Load sector ETF history from existing cache files.
     
     Args:
-        etf_symbol: ETF ticker symbol (e.g., 'XLK', 'XLF')
+        etf_symbol: ETF ticker symbol (e. g., 'XLK', 'XLF')
         period: History period
-        max_retries: Maximum retry attempts
+        max_retries: Ignored (kept for backwards compatibility)
         
     Returns:
-        DataFrame with ETF OHLCV data or None on failure
+        DataFrame with ETF OHLCV data or None if not found
     """
     cache_dir = get_etf_cache_dir()
-    cache_file = cache_dir / f'{etf_symbol}_{period}_adj.parquet'
     
-    # Try to load from cache
-    if cache_file.exists():
-        try:
-            df = pd.read_parquet(cache_file)
-            if not df.empty and (pd.Timestamp.now() - df.index[-1]) < pd.Timedelta(days=1):
-                return df
-        except Exception:
-            pass
+    # Try multiple filename patterns
+    possible_files = [
+        cache_dir / f'{etf_symbol}_{period}_raw. parquet',
+        cache_dir / f'{etf_symbol}_{period}_adj.parquet',
+        cache_dir / f'{etf_symbol}_{period}. parquet',
+    ]
     
-    # Fetch from yfinance
-    for attempt in range(max_retries):
-        try:
-            etf = yf.Ticker(etf_symbol)
-            hist = etf.history(period=period, auto_adjust=True)
-            if hist is not None and len(hist) > 0:
-                hist.to_parquet(cache_file, compression='zstd')
-                return hist
-        except Exception as e:
-            if attempt == max_retries - 1:
-                print(f"Failed to fetch {etf_symbol} after {max_retries} attempts: {e}")
-                return None
-            time.sleep(2 ** attempt)
+    for cache_file in possible_files:
+        if cache_file.exists():
+            try:
+                df = pd.read_parquet(cache_file)
+                if not df.empty:
+                    return df
+            except Exception as e: 
+                print(f"  Warning: Failed to load {cache_file.name}: {e}")
+                continue
     
+    # Silently return None if not found (sector ETFs are optional)
     return None
 
 
