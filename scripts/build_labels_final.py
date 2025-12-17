@@ -40,6 +40,10 @@ SAMPLE_TICKER_COUNT = 5  # Number of tickers to sample when checking latest date
 MAX_STALE_DAYS = 5  # Maximum days before considering data stale
 EXCLUDE_COLUMNS = {"Open", "High", "Low", "Close", "Adj Close", "Volume", "Date", "date", "symbol"}  # Columns to exclude from features
 
+# Earnings config
+EARNINGS_LOOKBACK_DAYS = 90  # Days to look back for recent earnings in statistics
+EARNINGS_TOLERANCE_DAYS = 120  # Maximum days to look back for merge_asof (~1 quarter)
+
 # ---------------- CLI ----------------
 
 def parse_args():
@@ -239,13 +243,19 @@ def load_earnings_events(file_path: Optional[str]) -> pd.DataFrame:
     df["eps_actual"] = pd.to_numeric(df[eps_actual_col], errors="coerce") if eps_actual_col else np.nan
     df["eps_estimate"] = pd.to_numeric(df[eps_estimate_col], errors="coerce") if eps_estimate_col else np.nan
     
-    # Compute surprise_pct if missing but we have actual & estimate
+    # Compute surprise_pct if missing but we have actual & estimate (vectorized)
     if df["eps_surprise_pct"].isna().all() and eps_actual_col and eps_estimate_col:
-        def compute_surprise(row):
-            if pd.notna(row["eps_actual"]) and pd.notna(row["eps_estimate"]) and row["eps_estimate"] != 0:
-                return (row["eps_actual"] - row["eps_estimate"]) / abs(row["eps_estimate"]) * 100
-            return np.nan
-        df["eps_surprise_pct"] = df.apply(compute_surprise, axis=1)
+        # Vectorized computation
+        has_both = df["eps_actual"].notna() & df["eps_estimate"].notna()
+        non_zero_estimate = df["eps_estimate"] != 0
+        valid = has_both & non_zero_estimate
+        
+        # Compute surprise percentage for valid rows
+        df.loc[valid, "eps_surprise_pct"] = (
+            (df.loc[valid, "eps_actual"] - df.loc[valid, "eps_estimate"]) / 
+            df.loc[valid, "eps_estimate"].abs() * 100
+        )
+    
     
     # Clean and sort
     df = df.dropna(subset=["date"])
@@ -595,10 +605,10 @@ def main():
         print(f"  Symbols with earnings: {earnings_df['symbol'].nunique()}")
         print(f"  Date range: {earnings_df['date'].min()} to {earnings_df['date'].max()}")
         
-        # Recent earnings (last 90 days)
-        recent_cutoff = pd.Timestamp.now() - pd.Timedelta(days=90)
+        # Recent earnings (using configured lookback)
+        recent_cutoff = pd.Timestamp.now() - pd.Timedelta(days=EARNINGS_LOOKBACK_DAYS)
         recent_earnings = earnings_df[pd.to_datetime(earnings_df['date']) >= recent_cutoff]
-        print(f"  Earnings in last 90 days: {len(recent_earnings)} events for {recent_earnings['symbol'].nunique()} symbols")
+        print(f"  Earnings in last {EARNINGS_LOOKBACK_DAYS} days: {len(recent_earnings)} events for {recent_earnings['symbol'].nunique()} symbols")
         
         # Before merge
         before_merge = len(df_all)
@@ -614,7 +624,7 @@ def main():
             on='date',
             by='symbol',
             direction='backward',  # Get most recent earnings BEFORE this date
-            tolerance=pd.Timedelta(days=120),  # Don't look back more than 1 quarter (120 days)
+            tolerance=pd.Timedelta(days=EARNINGS_TOLERANCE_DAYS),  # Don't look back more than 1 quarter
             suffixes=('', '_earnings')
         )
         
@@ -664,7 +674,7 @@ def main():
         # Compute quality score from surprise percentage
         # Positive surprises are good, negative are bad
         # Scale: -100% to +300% surprise → quality score
-        df_all['feat_earnings_quality'] = surprise.fillna(0).clip(-100, 300)
+        df_all['feat_earnings_quality'] = surprise.clip(-100, 300)
         
         # Log results
         non_zero = (df_all['feat_earnings_quality'] != 0).sum()

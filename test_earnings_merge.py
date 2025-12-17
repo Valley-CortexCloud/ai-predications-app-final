@@ -54,8 +54,9 @@ def test_merge_asof_logic():
     print("TEST: merge_asof earnings logic")
     print("="*60)
     
-    # Create sample data
-    dates = pd.date_range(end=datetime.now(), periods=10, freq='D')
+    # Use fixed date for reproducible tests
+    base_date = datetime(2024, 12, 1)
+    dates = pd.date_range(start=base_date, periods=10, freq='D')
     stocks_df = pd.DataFrame({
         'symbol': ['AAPL'] * 10,
         'date': dates,
@@ -89,8 +90,8 @@ def test_merge_asof_logic():
     
     # Verify logic
     # Days 0-1 should have no earnings (before first event)
-    assert result.loc[0, 'eps_surprise_pct'] != result.loc[0, 'eps_surprise_pct'], "Day 0 should be NaN"
-    assert result.loc[1, 'eps_surprise_pct'] != result.loc[1, 'eps_surprise_pct'], "Day 1 should be NaN"
+    assert pd.isna(result.loc[0, 'eps_surprise_pct']), "Day 0 should be NaN"
+    assert pd.isna(result.loc[1, 'eps_surprise_pct']), "Day 1 should be NaN"
     
     # Days 2-5 should have first earnings
     assert result.loc[2, 'eps_surprise_pct'] == 7.14, "Day 2 should have first earnings"
