@@ -21,7 +21,7 @@ df = pd.read_csv(csv_path)
 stocks = df['symbol'].tolist()[:20]
 
 # LLM setup (Groq example — fastest)
-llm = ChatGroq(model="llama-3.1-70b-versatile", temperature=0.3)
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.3)
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", """You are a world-class hedge fund analyst with 20+ years experience.
