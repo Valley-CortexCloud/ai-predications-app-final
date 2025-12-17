@@ -30,10 +30,126 @@ def main():
     run(f"python3 scripts/fetch_history_bulletproof.py --universe nasdaq --period 2y --out-dir {TICKER_CACHE_DIR} --max-workers 1")
     run(f'python3 scripts/fetch_history_bulletproof.py --tickers "SPY,^VIX,TLT,BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" --max-workers 1 --period 2y --out-dir {ETF_CACHE_DIR}')
     
+    # ===== DEBUG SPY PARQUET AFTER FETCH =====
+    print(f"\n{'='*60}")
+    print("DEBUG:  SPY PARQUET INSPECTION AFTER FETCH")
+    print(f"{'='*60}")
+    
+    spy_files = list(ETF_CACHE_DIR.glob("SPY_*.parquet"))
+    print(f"SPY files found in {ETF_CACHE_DIR}:  {[f.name for f in spy_files]}")
+    
+    if spy_files:
+        spy_file = spy_files[0]
+        print(f"\nInspecting:  {spy_file.name}")
+        
+        # Load SPY directly
+        spy_df = pd.read_parquet(spy_file)
+        
+        print(f"  Shape: {spy_df.shape}")
+        print(f"  Index type: {type(spy_df.index)}")
+        print(f"  Index name: {spy_df.index. name}")
+        print(f"  Column type: {type(spy_df.columns)}")
+        print(f"  Columns: {list(spy_df.columns)}")
+        print(f"  Has 'Adj Close': {'Adj Close' in spy_df.columns}")
+        print(f"  Has 'Close': {'Close' in spy_df.columns}")
+        
+        print(f"\n  First 3 rows:")
+        print(spy_df.head(3))
+        
+        print(f"\n  Last 3 rows:")
+        print(spy_df.tail(3))
+        
+        # Check if columns are MultiIndex
+        if isinstance(spy_df.columns, pd.MultiIndex):
+            print(f"\n  ⚠️  WARNING:  Columns are MultiIndex!")
+            print(f"  MultiIndex levels: {spy_df.columns. nlevels}")
+            print(f"  Level 0 values:  {spy_df.columns.get_level_values(0).tolist()}")
+            if spy_df.columns.nlevels > 1:
+                print(f"  Level 1 values: {spy_df.columns. get_level_values(1).tolist()}")
+        
+        # Check data types
+        print(f"\n  Data types:")
+        print(spy_df.dtypes)
+        
+    else:
+        print(f"  ⚠️  No SPY parquet files found!")
+    
+    print(f"{'='*60}\n")
+    # ===== END SPY DEBUG =====
+    
     # 2. Augment + enhance ONLY new/changed tickers (fast)
     run(f"python3 scripts/augment_caches_fast.py --processes 2 --cache-dir {TICKER_CACHE_DIR} --overwrite")
+      # ===== DEBUG SPY PARQUET AFTER ENHANCE =====
+    print(f"\n{'='*60}")
+    print("DEBUG: SPY PARQUET INSPECTION AFTER ENHANCE")
+    print(f"{'='*60}")
+    
+    if spy_files:
+        spy_file = spy_files[0]
+        print(f"\nRe-inspecting: {spy_file.name}")
+        
+        # Reload SPY
+        spy_df_after = pd.read_parquet(spy_file)
+        
+        print(f"  Shape: {spy_df_after.shape}")
+        print(f"  Columns: {list(spy_df_after.columns)}")
+        print(f"  Has 'Adj Close': {'Adj Close' in spy_df_after.columns}")
+        print(f"  Has 'Close':  {'Close' in spy_df_after.columns}")
+        
+        # Check if columns changed
+        if spy_files: 
+            original_cols = set(spy_df.columns)
+            after_cols = set(spy_df_after.columns)
+            
+            if original_cols != after_cols: 
+                print(f"\n  ⚠️  WARNING:  Columns CHANGED between fetch and enhance!")
+                added = after_cols - original_cols
+                removed = original_cols - after_cols
+                if added:
+                    print(f"  Added: {added}")
+                if removed:
+                    print(f"  Removed: {removed}")
+            else:
+                print(f"\n  ✓ Columns unchanged")
+    
+    print(f"{'='*60}\n")
+    # ===== END SPY DEBUG AFTER =====
     run(f"python3 scripts/enhance_features_final.py --processes 2 --cache-dir {TICKER_CACHE_DIR} --overwrite")
-
+      # ===== DEBUG SPY PARQUET AFTER ENHANCE =====
+    print(f"\n{'='*60}")
+    print("DEBUG: SPY PARQUET INSPECTION AFTER ENHANCE")
+    print(f"{'='*60}")
+    
+    if spy_files:
+        spy_file = spy_files[0]
+        print(f"\nRe-inspecting: {spy_file.name}")
+        
+        # Reload SPY
+        spy_df_after = pd.read_parquet(spy_file)
+        
+        print(f"  Shape: {spy_df_after.shape}")
+        print(f"  Columns: {list(spy_df_after.columns)}")
+        print(f"  Has 'Adj Close': {'Adj Close' in spy_df_after.columns}")
+        print(f"  Has 'Close':  {'Close' in spy_df_after.columns}")
+        
+        # Check if columns changed
+        if spy_files: 
+            original_cols = set(spy_df.columns)
+            after_cols = set(spy_df_after.columns)
+            
+            if original_cols != after_cols: 
+                print(f"\n  ⚠️  WARNING:  Columns CHANGED between fetch and enhance!")
+                added = after_cols - original_cols
+                removed = original_cols - after_cols
+                if added:
+                    print(f"  Added: {added}")
+                if removed:
+                    print(f"  Removed: {removed}")
+            else:
+                print(f"\n  ✓ Columns unchanged")
+    
+    print(f"{'='*60}\n")
+    # ===== END SPY DEBUG AFTER =====
     # 3. Earnings calendar (weekly is fine — run only on Mondays)
     # 3. Earnings calendar (Mondays OR if missing)
     #earnings_file = Path("data/earnings.csv")
