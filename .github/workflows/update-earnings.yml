@@ -1,76 +1,152 @@
-name: Update Earnings Calendar (Yahoo)
+name: Update Universe & Earnings
 
 on:
   schedule:
-    # Run every Monday at 6 AM UTC (after weekend)
-    - cron: '0 6 * * 1'
-  workflow_dispatch:  
+    # Run every Sunday at 3 AM UTC (before weekly earnings update)
+    - cron: '0 3 * * 0'
+  
+  workflow_dispatch: 
     inputs:
       mode:
         description: 'Update mode'
         required: false
         type: choice
         options: 
-          - incremental  # Default:  last 6 months
-          - full         # Rebuild:  last 3 years
-        default:  'incremental'
+          - incremental
+          - full
+        default: 'incremental'
       
-      lookback_days: 
-        description: 'Custom lookback days (overrides mode)'
+      skip_universe: 
+        description: 'Skip ticker universe update'
         required: false
-        default: ''
+        type: boolean
+        default: false
 
 jobs:
-  update-earnings: 
+  update-all: 
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # 2 hours for Yahoo scraping
+    timeout-minutes: 180
     
-    steps: 
+    steps:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Set up Python
-        uses:  actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-      - name: Free up disk space (manual - safe and effective)
+      - name: Free up disk space
         run: |
           echo "Before cleanup:"
           df -h /
-
-          sudo rm -rf /usr/share/dotnet      # ~10-17GB
-          sudo rm -rf /usr/local/lib/android # ~10-15GB
-          sudo rm -rf /opt/ghc               # ~3-5GB
-          sudo rm -rf /opt/hostedtoolcache/CodeQL  # ~5GB
-          sudo rm -rf /usr/local/.ghcup      # Haskell extras
-          sudo docker image prune -a -f      # If any Docker images (optional, ~3GB)
+          
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/. ghcup
+          sudo docker image prune -a -f
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
-
+          
           echo "After cleanup:"
           df -h /
-          
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install --upgrade yfinance  # Ensure latest yfinance
+          pip install --upgrade yfinance requests-cache
       
-      - name: Set lookback days
-        id: lookback
+      # ============================================================
+      # STEP 1: Update Ticker Universe
+      # ============================================================
+      - name:  Fetch ticker universe
+        if: ${{ ! inputs.skip_universe }}
         run: |
-          if [ -n "${{ github.event.inputs.lookback_days }}" ]; then
-            # Custom override
-            LOOKBACK="${{ github.event.inputs.lookback_days }}"
-            echo "Using custom lookback: $LOOKBACK days"
-          elif [ "${{ github.event.inputs.mode }}" == "full" ] || [ !  -f data/earnings.csv ]; then
-            # Full rebuild:  3 years
+          echo "🔍 Fetching ticker universe from Wikipedia..."
+          python3 scripts/fetch_ticker_universe.py
+      
+      - name:  Commit ticker universe if changed
+        if: ${{ ! inputs.skip_universe }}
+        run: |
+          if git diff --quiet config/ticker_universe.csv; then
+            echo "No changes to ticker universe"
+            echo "universe_changed=false" >> $GITHUB_ENV
+          else
+            echo "universe_changed=true" >> $GITHUB_ENV
+            
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add config/ticker_universe.csv
+            
+            TICKERS=$(tail -n +2 config/ticker_universe.csv | wc -l)
+            
+            git commit -F- <<EOF
+chore: update ticker universe
+
+- Total tickers: $TICKERS
+- Updated: $(date -u +%Y-%m-%d)
+- Sources: S&P 500, NASDAQ 100
+EOF
+            
+            git push
+          fi
+      
+      # ============================================================
+      # STEP 2: Generate Sector Map (uses ticker_universe.csv)
+      # ============================================================
+      - name:  Generate sector map
+        env:
+          # Optional: add API keys if you have premium data sources
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+        run: |
+          echo "🏢 Generating sector map from ticker universe..."
+          python3 scripts/build_sector_map.py \
+            --out config/sector_map.csv \
+            --symbols-file config/ticker_universe. csv \
+            --cache-requests \
+            --with-heuristics
+      
+      - name: Commit sector map if changed
+        run: |
+          if git diff --quiet config/sector_map.csv; then
+            echo "No changes to sector map"
+            echo "sector_changed=false" >> $GITHUB_ENV
+          else
+            echo "sector_changed=true" >> $GITHUB_ENV
+            
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add config/sector_map. csv
+            
+            MAPPED=$(tail -n +2 config/sector_map.csv | wc -l)
+            GICS=$(tail -n +2 config/sector_map.csv | cut -d',' -f3 | grep -c "gics" || true)
+            
+            git commit -F- <<EOF
+chore:  update sector map
+
+- Total mapped:  $MAPPED
+- GICS (S&P 500): $GICS
+- Updated:  $(date -u +%Y-%m-%d)
+EOF
+            
+            git push
+          fi
+      
+      # ============================================================
+      # STEP 3: Update Earnings Calendar (uses ticker_universe.csv)
+      # ============================================================
+      - name:  Determine earnings lookback
+        id: earnings_lookback
+        run: |
+          if [ "${{ inputs.mode }}" == "full" ] || [ !  -f data/earnings. csv ]; then
             LOOKBACK="1095"
             echo "Full rebuild mode:  $LOOKBACK days (~3 years)"
           else
-            # Incremental:  6 months
             LOOKBACK="180"
             echo "Incremental mode: $LOOKBACK days (~6 months)"
           fi
@@ -78,69 +154,93 @@ jobs:
       
       - name: Update earnings calendar
         env:
-          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets. FINNHUB_API_KEY }}
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           ALPHAVANTAGE_API_KEY:  ${{ secrets.ALPHAVANTAGE_API_KEY }}
         run: |
+          echo "📊 Updating earnings calendar..."
           python3 scripts/update_earnings_incremental.py \
             --existing data/earnings.csv \
-            --output data/earnings.csv \
-            --lookback-days ${{ steps.lookback.outputs.days }} \
+            --output data/earnings. csv \
+            --ticker-universe config/ticker_universe. csv \
+            --lookback-days ${{ steps.earnings_lookback.outputs.days }} \
             --provider-order yahoo,finnhub,fmp,alphavantage \
             --verbose
       
-      
-      - name: Check for changes
-        id: check_changes
+      - name:  Commit earnings if changed
         run: |
-          git diff --exit-code data/earnings.csv || echo "changed=true" >> $GITHUB_OUTPUT
+          if git diff --quiet data/earnings.csv; then
+            echo "No changes to earnings calendar"
+            echo "earnings_changed=false" >> $GITHUB_ENV
+          else
+            echo "earnings_changed=true" >> $GITHUB_ENV
+            
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/earnings.csv
+            
+            ROWS=$(wc -l < data/earnings. csv)
+            SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
+            
+            git commit -F- <<EOF
+chore: update earnings calendar
+
+- Total rows: $ROWS
+- Symbols: $SYMBOLS
+- Lookback: ${{ steps.earnings_lookback. outputs.days }} days
+- Updated: $(date -u +%Y-%m-%d)
+- Source: Yahoo Finance (primary)
+EOF
+            
+            git push
+          fi
       
-      - name:  Commit and push if changed
-        if: steps.check_changes.outputs.changed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/earnings.csv
-          
-          ROWS=$(wc -l < data/earnings.csv)
-          SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
-          
-          # Option 1: Use heredoc (cleanest for multi-line)
-          DATE=$(date -u +%Y-%m-%d)
-    
-          # Option 3: Single-line with escaped newlines
-          git commit -m "chore: update earnings calendar" \
-               -m "" \
-               -m "- Total rows: $ROWS" \
-               -m "- Symbols:  $SYMBOLS" \
-               -m "- Updated: $DATE" \
-               -m "- Source: Yahoo Finance (primary)"
-          git push
-          
+      # ============================================================
+      # Summary
+      # ============================================================
       - name: Summary
         run: |
-          echo "## 📊 Earnings Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎯 Universe & Data Update Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
+          # Ticker Universe
+          if [ -f config/ticker_universe.csv ]; then
+            TICKERS=$(tail -n +2 config/ticker_universe.csv | wc -l)
+            if [ "${{ env.universe_changed }}" == "true" ]; then
+              echo "### ✅ Ticker Universe Updated" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "### ℹ️ Ticker Universe (No Changes)" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "- Total tickers: **$TICKERS**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Sector Map
+          if [ -f config/sector_map.csv ]; then
+            MAPPED=$(tail -n +2 config/sector_map.csv | wc -l)
+            if [ "${{ env.sector_changed }}" == "true" ]; then
+              echo "### ✅ Sector Map Updated" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "### ℹ️ Sector Map (No Changes)" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "- Mapped symbols: **$MAPPED**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Earnings
           if [ -f data/earnings.csv ]; then
             ROWS=$(wc -l < data/earnings.csv)
             SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
             OLDEST=$(tail -n +2 data/earnings.csv | cut -d',' -f2 | sort | head -1)
             NEWEST=$(tail -n +2 data/earnings.csv | cut -d',' -f2 | sort | tail -1)
             
-            if [ "${{ steps.check_changes.outputs. changed }}" == "true" ]; then
-              echo "### ✅ Updated Successfully" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ env.earnings_changed }}" == "true" ]; then
+              echo "### ✅ Earnings Calendar Updated" >> $GITHUB_STEP_SUMMARY
             else
-              echo "### ℹ️ No Changes Detected" >> $GITHUB_STEP_SUMMARY
+              echo "### ℹ️ Earnings Calendar (No Changes)" >> $GITHUB_STEP_SUMMARY
             fi
             
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| Total Rows | $ROWS |" >> $GITHUB_STEP_SUMMARY
-            echo "| Symbols | $SYMBOLS |" >> $GITHUB_STEP_SUMMARY
-            echo "| Date Range | $OLDEST to $NEWEST |" >> $GITHUB_STEP_SUMMARY
-            echo "| Primary Source | Yahoo Finance |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ **Error:** data/earnings.csv not found!" >> $GITHUB_STEP_SUMMARY
+            echo "- Total events: **$ROWS**" >> $GITHUB_STEP_SUMMARY
+            echo "- Symbols covered: **$SYMBOLS**" >> $GITHUB_STEP_SUMMARY
+            echo "- Date range: $OLDEST to $NEWEST" >> $GITHUB_STEP_SUMMARY
           fi
