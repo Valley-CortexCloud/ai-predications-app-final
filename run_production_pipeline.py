@@ -64,14 +64,19 @@ def main():
     print(f"Symbols for this date: {today_df['symbol'].nunique()}")
 
     # Validate this is actually "today" or very recent
-    actual_today = dt.datetime.now().date()
+    import datetime
+    actual_today = datetime.datetime.now().date()
     days_behind = (pd.to_datetime(actual_today) - pd.to_datetime(latest_date)).days
     print(f"Days behind current date: {days_behind}")
 
     if days_behind > 5:
         print(f"⚠️  WARNING: Latest data is {days_behind} days old! Expected fresh data.")
-    if days_behind < -1:
+        print(f"   This means predictions are for {days_behind} days ago, not today.")
+        print(f"   The model will predict {latest_date} + 63 days = {pd.to_datetime(latest_date) + pd.Timedelta(days=63)}")
+    elif days_behind < -1:
         print(f"⚠️  WARNING: Latest date is {abs(days_behind)} days in the FUTURE! Data issue detected.")
+    else:
+        print(f"✓ Data is fresh (within {days_behind} days of current date)")
 
     # Extract VIX from LATEST date (all rows have same value for cross-sectional features)
     if 'feat_vix_level_z_63' in today_df.columns:
