@@ -680,7 +680,7 @@ def main():
         # Find actual latest date from cache files
         cache_path = Path(args.cache_dir)
         sample_file = None
-        for ticker in df_all['symbol'].unique()[:SAMPLE_TICKER_COUNT]:  # Check first few tickers
+        for ticker in df_all['symbol'].drop_duplicates().head(SAMPLE_TICKER_COUNT):  # Check first few tickers
             enhanced_files = list(cache_path.glob(f"{ticker}_*_features_enhanced.parquet"))
             if enhanced_files:
                 sample_file = enhanced_files[0]
@@ -711,7 +711,7 @@ def main():
                 # Rebuild dataset for actual_latest date
                 production_rows = []
                 
-                for ticker in df_all['symbol'].unique():
+                for ticker in df_all['symbol'].drop_duplicates():
                     try:
                         # Find enhanced features file
                         enhanced_files = list(cache_path.glob(f"{ticker}_*_features_enhanced.parquet"))

@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
-import datetime as dt
 
 ROOT = Path(__file__).parent
 TICKER_CACHE_DIR = ROOT / "data_cache" / "10y_ticker_features"
