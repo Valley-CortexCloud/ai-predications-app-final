@@ -549,7 +549,16 @@ def main():
     sector_map = load_sector_map(args.sector_map)
     
     # Load SPY (required)
-    etf_cache_dir = Path(args.cache_dir).parent / '_etf_cache'
+    etf_cache_dir = ETF_CACHE_DIR
+
+    all_spy_files = list(Path(etf_cache_dir).glob("SPY_*. parquet"))
+    logging.info(f"🔍 All SPY files in {etf_cache_dir}:")
+    for f in all_spy_files:
+        spy_debug = pd.read_parquet(f)
+        logging.info(f"  {f.name}: shape={spy_debug.shape}, columns={list(spy_debug.columns)}")
+
+    spy_fp = find_cache_for_ticker("SPY", str(etf_cache_dir))
+    logging.info(f"✓ Selected SPY file: {spy_fp}")
     spy_fp = find_cache_for_ticker("SPY", str(etf_cache_dir))
     if not spy_fp:
         raise SystemExit("SPY not found")
