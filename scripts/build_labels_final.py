@@ -35,6 +35,11 @@ MIN_PRICE = 5.0
 MIN_ADV20_DOLLAR = 2_000_000.0
 NY_TZ = "America/New_York"
 
+# Production mode config
+SAMPLE_TICKER_COUNT = 5  # Number of tickers to sample when checking latest date
+MAX_STALE_DAYS = 5  # Maximum days before considering data stale
+EXCLUDE_COLUMNS = {"Open", "High", "Low", "Close", "Adj Close", "Volume", "Date", "date", "symbol"}  # Columns to exclude from features
+
 # ---------------- CLI ----------------
 
 def parse_args():
@@ -664,8 +669,169 @@ def main():
     # Deduplicate by (date, symbol)
     df_all = df_all.sort_values(["date", "symbol"]).drop_duplicates(["date", "symbol"], keep="last")
     
-    # Production mode: only keep most recent date
+    # Production mode: Re-load features from ACTUAL latest date (not training cutoff)
     if args.production_only:
+        print(f"\n🚀 PRODUCTION MODE: Reloading features from actual latest date")
+        
+        # Current df_all has features from dates with 63d forward returns (oldest = today - 63d)
+        training_latest = df_all['date'].max()
+        print(f"   Training latest date (with 63d forward): {training_latest}")
+        
+        # Find actual latest date from cache files
+        cache_path = Path(args.cache_dir)
+        sample_file = None
+        for ticker in df_all['symbol'].drop_duplicates().head(SAMPLE_TICKER_COUNT):  # Check first few tickers
+            enhanced_files = list(cache_path.glob(f"{ticker}_*_features_enhanced.parquet"))
+            if enhanced_files:
+                sample_file = enhanced_files[0]
+                break
+        
+        if sample_file:
+            sample_df = pd.read_parquet(sample_file)
+            
+            # Normalize index
+            if "Date" in sample_df.columns:
+                sample_df["Date"] = pd.to_datetime(sample_df["Date"], errors="coerce")
+                sample_df = sample_df.set_index("Date")
+            else:
+                sample_df.index = pd.to_datetime(sample_df.index, errors="coerce")
+            
+            sample_df.index = normalize_index_to_ny_dates(sample_df.index)
+            actual_latest = sample_df.index.max()
+            
+            print(f"   Actual latest date (from cache): {actual_latest}")
+            
+            days_diff = (pd.to_datetime(actual_latest) - pd.to_datetime(training_latest)).days
+            print(f"   Difference: {days_diff} days")
+            
+            if days_diff > MAX_STALE_DAYS:
+                print(f"\n   ⚠️  WARNING: {days_diff} days of fresh data available!")
+                print(f"   Re-processing all tickers for date: {actual_latest}")
+                
+                # Rebuild dataset for actual_latest date
+                production_rows = []
+                
+                for ticker in df_all['symbol'].drop_duplicates():
+                    try:
+                        # Find enhanced features file
+                        enhanced_files = list(cache_path.glob(f"{ticker}_*_features_enhanced.parquet"))
+                        if not enhanced_files:
+                            continue
+                        
+                        feat_df = pd.read_parquet(enhanced_files[0])
+                        
+                        # Normalize index
+                        if "Date" in feat_df.columns:
+                            feat_df["Date"] = pd.to_datetime(feat_df["Date"], errors="coerce")
+                            feat_df = feat_df.set_index("Date")
+                        else:
+                            feat_df.index = pd.to_datetime(feat_df.index, errors="coerce")
+                        
+                        feat_df.index = normalize_index_to_ny_dates(feat_df.index)
+                        
+                        # Get row for actual_latest date
+                        if actual_latest not in feat_df.index:
+                            continue
+                        
+                        row_data = feat_df.loc[actual_latest:actual_latest].copy()
+                        
+                        # Select only numeric columns (features)
+                        num_cols = [c for c in row_data.columns 
+                                    if pd.api.types.is_numeric_dtype(row_data[c]) and c not in EXCLUDE_COLUMNS]
+                        
+                        if num_cols:
+                            row_data = row_data[num_cols].copy()
+                            
+                            # Add feat_ prefix if not already there
+                            new_names = []
+                            for c in row_data.columns:
+                                if c.startswith("feat_"):
+                                    new_names.append(c)
+                                else:
+                                    new_names.append(f"feat_{c}")
+                            row_data.columns = new_names
+                            
+                            # Remove duplicates
+                            row_data = row_data.loc[:, ~row_data.columns.duplicated()]
+                            
+                            # Add metadata
+                            row_data = row_data.reset_index().rename(columns={"Date": "date"})
+                            row_data["symbol"] = ticker
+                            row_data["date"] = actual_latest
+                            
+                            # Get price and ADV20 from raw file for liquidity filter
+                            raw_file = find_cache_for_ticker(ticker, args.cache_dir)
+                            if raw_file and raw_file.exists():
+                                raw_df = load_parquet_indexed(raw_file)
+                                if actual_latest in raw_df.index:
+                                    close_col = "Adj Close" if "Adj Close" in raw_df.columns else "Close"
+                                    row_data["price"] = raw_df.loc[actual_latest, close_col]
+                                    
+                                    if "Volume" in raw_df.columns:
+                                        close_series = raw_df[close_col]
+                                        vol_series = raw_df["Volume"]
+                                        adv20 = (close_series * vol_series).rolling(20, min_periods=1).mean()
+                                        if actual_latest in adv20.index:
+                                            row_data["adv20_dollar"] = adv20.loc[actual_latest]
+                            
+                            production_rows.append(row_data)
+                    
+                    except Exception as e:
+                        logging.warning(f"Error loading production data for {ticker}: {e}")
+                
+                if production_rows:
+                    print(f"\n   ✓ Loaded {len(production_rows)} tickers for production date {actual_latest}")
+                    
+                    # Replace df_all with production data
+                    df_all = pd.concat(production_rows, ignore_index=True)
+                    df_all["date"] = to_ny_date_col(df_all["date"])
+                    
+                    # Recompute cross-sectional features for this single date
+                    df_all = add_cross_sectional_ranks(df_all)
+                    df_all = add_cross_sectional_z_scores(df_all)
+                    
+                    # Recompute composite quality
+                    logging.info("🔧 Re-computing composite quality for production date...")
+                    
+                    quality_parts = []
+                    
+                    if 'feat_low_vol_raw' in df_all.columns:
+                        vol_max = df_all['feat_low_vol_raw'].max()
+                        vol_score = 1.0 - (df_all['feat_low_vol_raw'] / vol_max if vol_max > 0 else 0)
+                        quality_parts.append(vol_score)
+                    
+                    if 'feat_in_uptrend' in df_all.columns:
+                        quality_parts.append(df_all['feat_in_uptrend'])
+                    
+                    if 'feat_earnings_quality' in df_all.columns:
+                        earn_score = ((df_all['feat_earnings_quality'] + 500) / 2000).clip(0, 1)
+                        quality_parts.append(earn_score.fillna(0.5))
+                    
+                    if quality_parts:
+                        df_all['feat_composite_quality'] = pd.concat(quality_parts, axis=1).mean(axis=1)
+                    else:
+                        df_all['feat_composite_quality'] = 0.5
+                    
+                    # Fill NaNs
+                    feat_cols = [c for c in df_all.columns if c.startswith("feat_")]
+                    for col in feat_cols:
+                        df_all[col] = df_all[col].fillna(0)
+                    
+                    # Apply liquidity filter
+                    if 'price' in df_all.columns and 'adv20_dollar' in df_all.columns:
+                        before_liq = len(df_all)
+                        df_all = df_all[(df_all["price"] >= MIN_PRICE) & (df_all["adv20_dollar"] >= MIN_ADV20_DOLLAR)]
+                        print(f"   Liquidity filter: {len(df_all)}/{before_liq} tickers passed")
+                    
+                    print(f"   Final production dataset: {len(df_all)} rows for {df_all['symbol'].nunique()} symbols")
+                else:
+                    print(f"   ⚠️  WARNING: Could not load production data, using training cutoff date")
+            else:
+                print(f"   ✓ Training data is recent enough (within {MAX_STALE_DAYS} days)")
+        else:
+            print(f"   ⚠️  Could not find sample file to check actual latest date")
+        
+        # Now filter to latest date (which is either actual_latest or training_latest)
         latest_date = df_all['date'].max()
         original_rows = len(df_all)
         df_all = df_all[df_all['date'] == latest_date].copy()
@@ -674,9 +840,9 @@ def main():
         print(f"   Latest date: {latest_date}")
         print(f"   Symbols: {df_all['symbol'].nunique()}")
     
-    # ===== FEATURE SANITY CHECKS =====
+    # ===== ENHANCED FEATURE DEBUGGING =====
     print("\n" + "=" * 60)
-    print("FEATURE SANITY CHECKS")
+    print("ENHANCED FEATURE DEBUGGING")
     print("=" * 60)
 
     feature_cols = [c for c in df_all.columns if c.startswith('feat_')]
@@ -685,45 +851,91 @@ def main():
     print(f"Date range: {df_all['date'].min()} to {df_all['date'].max()}")
     print(f"Symbols: {df_all['symbol'].nunique()}")
 
+    # Show ALL feature columns (sorted) so we can see naming patterns
+    print(f"\n📋 ALL FEATURE COLUMNS ({len(feature_cols)} total):")
+    for i, col in enumerate(sorted(feature_cols), 1):
+        sample_val = df_all[col].iloc[0] if len(df_all) > 0 else np.nan
+        non_zero = (df_all[col] != 0).sum()
+        print(f"  {i:3d}. {col:50s} (sample={sample_val:.4f}, non-zero={non_zero}/{len(df_all)})")
+
+    # Search for specific feature patterns
+    print(f"\n🔍 FEATURE PATTERN SEARCH:")
+
+    # Mom 12m skip1m variations
+    mom_variations = [c for c in df_all.columns if 'mom' in c.lower() and '12' in c]
+    print(f"\n  12-month momentum features ({len(mom_variations)}):")
+    for col in mom_variations:
+        print(f"    - {col}")
+    if not mom_variations:
+        print(f"    ⚠️  NONE FOUND!")
+
+    # RSI variations
+    rsi_variations = [c for c in df_all.columns if 'rsi' in c.lower()]
+    print(f"\n  RSI features ({len(rsi_variations)}):")
+    for col in rsi_variations:
+        print(f"    - {col}")
+    if not rsi_variations:
+        print(f"    ⚠️  NONE FOUND!")
+
+    # Sector relative features
+    sector_variations = [c for c in df_all.columns if 'sector' in c.lower()]
+    print(f"\n  Sector features ({len(sector_variations)}):")
+    for col in sector_variations:
+        print(f"    - {col}")
+    if not sector_variations:
+        print(f"    ⚠️  NONE FOUND!")
+
     # Check for problematic features
+    print(f"\n⚠️  PROBLEMATIC FEATURES:")
+
     zero_features = [c for c in feature_cols if (df_all[c] == 0).all()]
     if zero_features:
-        print(f"\n⚠️  Features that are ALL ZERO ({len(zero_features)}):")
+        print(f"\n  Features that are ALL ZERO ({len(zero_features)}):")
         for feat in zero_features[:20]:
             print(f"    - {feat}")
         if len(zero_features) > 20:
             print(f"    ... and {len(zero_features) - 20} more")
+    else:
+        print(f"\n  ✓ No all-zero features")
 
     nan_features = [c for c in feature_cols if df_all[c].isna().all()]
     if nan_features:
-        print(f"\n⚠️  Features that are ALL NaN ({len(nan_features)}):")
+        print(f"\n  Features that are ALL NaN ({len(nan_features)}):")
         for feat in nan_features[:20]:
             print(f"    - {feat}")
         if len(nan_features) > 20:
             print(f"    ... and {len(nan_features) - 20} more")
+    else:
+        print(f"\n  ✓ No all-NaN features")
 
     constant_features = []
     for c in feature_cols:
         if df_all[c].nunique() == 1:
             constant_features.append((c, df_all[c].iloc[0]))
     if constant_features:
-        print(f"\n⚠️  Features with only ONE unique value ({len(constant_features)}):")
+        print(f"\n  Features with only ONE unique value ({len(constant_features)}):")
         for feat, val in constant_features[:20]:
             print(f"    - {feat} = {val}")
         if len(constant_features) > 20:
             print(f"    ... and {len(constant_features) - 20} more")
+    else:
+        print(f"\n  ✓ No constant features")
 
-    # Check critical features in detail
-    print(f"\n📊 Key Feature Statistics:")
+    # CORRECTED: Check for features WITH proper feat_ prefix
+    print(f"\n📊 KEY FEATURE STATISTICS (corrected names):")
     key_features = [
         'feat_vix_level_z_63',
         'feat_beta_spy_126', 
         'feat_earnings_quality',
-        'mom_12m_skip1m',
+        'feat_mom_12m_skip1m',  # ← CORRECTED: Added feat_ prefix
         'feat_high_vol_regime',
         'feat_sector_rel_ret_21d',
-        'rsi',
-        'feat_idio_vol_63'
+        'feat_sector_rel_ret_63d',  # ← Alternative
+        'feat_rsi',  # ← CORRECTED: Added feat_ prefix
+        'feat_idio_vol_63',
+        'feat_low_vol_raw',
+        'feat_parkinson_20',
+        'feat_composite_quality'
     ]
 
     for feat in key_features:
@@ -731,31 +943,48 @@ def main():
             vals = df_all[feat]
             null_count = vals.isna().sum()
             zero_count = (vals == 0).sum()
-            print(f"  {feat}:")
-            print(f"    min={vals.min():.6f}, max={vals.max():.6f}, mean={vals.mean():.6f}, std={vals.std():.6f}")
-            print(f"    nulls={null_count} ({null_count/len(vals)*100:.1f}%), zeros={zero_count} ({zero_count/len(vals)*100:.1f}%)")
+            print(f"  ✓ {feat}:")
+            print(f"      min={vals.min():.6f}, max={vals.max():.6f}, mean={vals.mean():.6f}, std={vals.std():.6f}")
+            print(f"      nulls={null_count} ({null_count/len(vals)*100:.1f}%), zeros={zero_count} ({zero_count/len(vals)*100:.1f}%)")
         else:
-            print(f"  ⚠️  {feat}: MISSING!")
-    
+            print(f"  ✗ {feat}: MISSING!")
+
     # Check for missing critical features
-    missing_critical = []
-    for feat in key_features:
-        if feat not in df_all.columns:
-            missing_critical.append(feat)
-    
+    missing_critical = [f for f in key_features if f not in df_all.columns]
+
     if missing_critical:
         print(f"\n⚠️  CRITICAL: Missing {len(missing_critical)} key features!")
         print(f"   {missing_critical}")
-        print(f"   These may be required by the model!")
+        
+        # Try to find similar named columns
+        print(f"\n   Searching for similar column names:")
+        for missing in missing_critical:
+            # Strip feat_ prefix and search
+            base_name = missing.replace('feat_', '')
+            similar = [c for c in df_all.columns if base_name in c.lower()]
+            if similar:
+                print(f"     {missing} → Found similar: {similar}")
+            else:
+                print(f"     {missing} → No similar columns found")
 
-    # Check feature correlations with a few key ones
-    print(f"\n🔗 Correlation check (sample features with feat_vix_level_z_63):")
-    if 'feat_vix_level_z_63' in df_all.columns:
-        corr_features = ['mom_12m_skip1m', 'rsi', 'feat_beta_spy_126', 'feat_high_vol_regime']
-        for feat in corr_features:
-            if feat in df_all.columns:
-                corr = df_all['feat_vix_level_z_63'].corr(df_all[feat])
-                print(f"  {feat}: {corr:.4f}")
+    # Check sample of first ticker's enhanced file to see what's in there
+    print(f"\n🔬 SAMPLE: Checking first ticker's enhanced file directly...")
+    try:
+        first_ticker = df_all['symbol'].iloc[0] if len(df_all) > 0 else None
+        if first_ticker:
+            cache_path = Path(args.cache_dir)
+            enhanced_file = list(cache_path.glob(f"{first_ticker}_*_features_enhanced.parquet"))
+            if enhanced_file:
+                sample_enhanced = pd.read_parquet(enhanced_file[0])
+                enhanced_cols = [c for c in sample_enhanced.columns if 'mom' in c.lower() or 'rsi' in c.lower() or 'sector' in c.lower()]
+                print(f"  File: {enhanced_file[0].name}")
+                print(f"  Mom/RSI/Sector columns in enhanced file:")
+                for col in enhanced_cols[:20]:
+                    print(f"    - {col}")
+            else:
+                print(f"  ⚠️  No enhanced file found for {first_ticker}")
+    except Exception as e:
+        print(f"  ⚠️  Error checking enhanced file: {e}")
 
     print("=" * 60)
     
