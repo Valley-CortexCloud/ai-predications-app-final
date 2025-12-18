@@ -27,8 +27,8 @@ if not csv_files:
 csv_path = csv_files[0]
 print(f"📊 Loading from: {csv_path}")
 df = pd.read_csv(csv_path)
-stocks = df. head(20).reset_index(drop=True)
-print(f"🚀 Supercharging {len(stocks)} stocks (ELITE mode, parallel).. .\n")
+stocks = df.head(20).reset_index(drop=True)
+print(f"🚀 Supercharging {len(stocks)} stocks (ELITE mode, parallel)...\n")
 
 # ============================================================================
 # ELITE HALLUCINATION GUARD (NO COMPROMISE)
@@ -114,7 +114,7 @@ Your mission:  Supercharge this ranking using real-time intelligence and asymmet
                 response_format={"type": "json_object"}
             )
 
-            raw = response.choices[0].message. content. strip()
+            raw = response.choices[0].message.content.strip()
             
             # Remove markdown if present
             if "```json" in raw:
@@ -123,7 +123,7 @@ Your mission:  Supercharge this ranking using real-time intelligence and asymmet
                 raw = raw.split("```")[1].strip()
 
             # Parse JSON
-            data = json. loads(raw)
+            data = json.loads(raw)
             
             # Ensure core fields exist
             data['rank'] = int(original_rank)
@@ -132,13 +132,13 @@ Your mission:  Supercharge this ranking using real-time intelligence and asymmet
             # Track costs
             data['_tokens_used'] = response.usage.total_tokens
             data['_api_cost'] = (response.usage.prompt_tokens * 3.0 / 1_000_000) + \
-                                (response.usage. completion_tokens * 15.0 / 1_000_000)
+                                (response.usage.completion_tokens * 15.0 / 1_000_000)
             
             return data
 
         except json.JSONDecodeError as e:
             if attempt < max_retries:
-                print(f"  ⚠️  {symbol}:  JSON parse error, retrying... ({attempt+1}/{max_retries})")
+                print(f"  ⚠️  {symbol}:  JSON parse error, retrying...({attempt+1}/{max_retries})")
                 time.sleep(1)
             else:
                 print(f"  ❌ {symbol}: JSON failed after {max_retries} retries")
@@ -169,7 +169,7 @@ def create_error_row(symbol, original_rank, error_msg):
         "supercharged_rank": int(original_rank),  # Fallback to original
         "data_confidence":  "low",
         "_tokens_used": 0,
-        "_api_cost": 0. 0
+        "_api_cost": 0.0
     }
 
 # ============================================================================
@@ -197,7 +197,7 @@ with ThreadPoolExecutor(max_workers=8) as executor:
         results.append(result)
         
         completed += 1
-        total_cost += result. get('_api_cost', 0.0)
+        total_cost += result.get('_api_cost', 0.0)
         total_tokens += result.get('_tokens_used', 0)
         
         # Status indicator
@@ -208,7 +208,7 @@ with ThreadPoolExecutor(max_workers=8) as executor:
         else:
             status = "="
         
-        print(f"  [{completed: 2d}/20] {status} {result['symbol']: 6s} | #{result['rank']:2d} → #{result['supercharged_rank']: 2d} | {result['conviction']: 12s} | ${result. get('_api_cost', 0):.4f}")
+        print(f"  [{completed: 2d}/20] {status} {result['symbol']: 6s} | #{result['rank']:2d} → #{result['supercharged_rank']: 2d} | {result['conviction']: 12s} | ${result.get('_api_cost', 0):.4f}")
 
 # ============================================================================
 # DataFrame + Analytics
@@ -239,19 +239,19 @@ print(f"   Avg per stock:   ${total_cost/len(stocks):.4f}")
 print(f"{'='*60}\n")
 
 # Confidence warnings
-if 'data_confidence' in result_df. columns:
+if 'data_confidence' in result_df.columns:
     low_conf = result_df[result_df['data_confidence'] == 'low']
     if len(low_conf) > 0:
-        print(f"⚠️  Low real-time confidence ({len(low_conf)} stocks): {', '.join(low_conf['symbol']. tolist())}")
+        print(f"⚠️  Low real-time confidence ({len(low_conf)} stocks): {', '.join(low_conf['symbol'].tolist())}")
         print(f"   → Grok had limited X sentiment visibility on these\n")
 
 # Biggest moves
-big_upgrades = result_df[result_df['rank_change'] >= 5]. sort_values('supercharged_rank')
+big_upgrades = result_df[result_df['rank_change'] >= 5].sort_values('supercharged_rank')
 big_downgrades = result_df[result_df['rank_change'] <= -5].sort_values('supercharged_rank', ascending=False)
 
 if len(big_upgrades) > 0:
     print(f"🚀 MAJOR UPGRADES (≥5 ranks):")
-    for _, row in big_upgrades. iterrows():
+    for _, row in big_upgrades.iterrows():
         print(f"   {row['symbol']: 6s}:  #{row['rank']:2d} → #{row['supercharged_rank']:2d} (+{row['rank_change']:2d}) | {row['conviction']}")
         print(f"      Reason: {row['predicted_excess'][: 80]}...")
     print()
@@ -260,7 +260,7 @@ if len(big_downgrades) > 0:
     print(f"⚠️  MAJOR DOWNGRADES (≥5 ranks):")
     for _, row in big_downgrades.iterrows():
         print(f"   {row['symbol']: 6s}: #{row['rank']: 2d} → #{row['supercharged_rank']:2d} ({row['rank_change']:2d}) | {row['conviction']}")
-        print(f"      Reason: {row. get('fundamental_edge', 'N/A')[:80]}...")
+        print(f"      Reason: {row.get('fundamental_edge', 'N/A')[:80]}...")
     print()
 
 # ============================================================================
@@ -268,11 +268,11 @@ if len(big_downgrades) > 0:
 # ============================================================================
 today = datetime.date.today().strftime("%Y-%m-%d")
 Path("datasets").mkdir(exist_ok=True)
-output_path = f"datasets/supercharged_top20_{today}. csv"
+output_path = f"datasets/supercharged_top20_{today}.csv"
 
 # Remove internal tracking columns
 result_df_clean = result_df.drop(columns=['_tokens_used', '_api_cost'], errors='ignore')
-result_df_clean. to_csv(output_path, index=False)
+result_df_clean.to_csv(output_path, index=False)
 
 # Metadata
 metadata = {
