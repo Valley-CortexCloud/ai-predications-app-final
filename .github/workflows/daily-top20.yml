@@ -105,11 +105,11 @@ jobs:
           python-version: '3.12'
 
       - name: Install LLM deps
-        run: pip install langchain langchain-groq pandas
+        run: pip install openai pandas
 
       - name: Run LLM analysis
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.XAI_API_KEY }}
         run: python scripts/llm_supercharge.py
 
       - name: Upload supercharged report
