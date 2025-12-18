@@ -208,7 +208,7 @@ with ThreadPoolExecutor(max_workers=8) as executor:
         else:
             status = "="
         
-        print(f"  [{completed:2d}/20] {status} {result['symbol']: 6s} | #{result['rank']:2d} → #{result['supercharged_rank']:2d} | {result['conviction']:12s} | ${result.get('_api_cost', 0):.4f}")
+        print(f"  [{completed:2d}/20] {status} {result['symbol']:6s} | #{result['rank']:2d} → #{result['supercharged_rank']:2d} | {result['conviction']:12s} | ${result.get('_api_cost', 0):.4f}")
 
 # ============================================================================
 # DataFrame + Analytics
