@@ -6,7 +6,7 @@ import datetime
 import json
 import glob
 
-rint("Env keys present:", [k for k in os.environ.keys() if 'API_KEY' in k])
+print("Env keys present:", [k for k in os.environ.keys() if 'API_KEY' in k])
 xai_key = os.getenv("XAI_API_KEY")
 if not xai_key:
     raise ValueError("XAI_API_KEY is MISSING from environment!")
