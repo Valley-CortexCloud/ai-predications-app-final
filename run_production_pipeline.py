@@ -14,7 +14,7 @@ PREDICTIONS_PATH = DATASETS_DIR / "predictions.csv"
 
 TICKER_UNIVERSE = ROOT / "config" / "ticker_universe.csv"
 SECTOR_MAP = ROOT / "config" / "sector_map.csv"
-EARNINGS_FILE = ROOT / "data" / "earnings. csv"
+EARNINGS_FILE = ROOT / "data" / "earnings.csv"
 
 def run(cmd):
     print(f"Running: {cmd}")
@@ -112,7 +112,7 @@ def main():
         sys.exit(1)
     else:
         sector_df = pd.read_csv(SECTOR_MAP)
-        mapped = sector_df['sector_etf']. notna().sum()
+        mapped = sector_df['sector_etf'].notna().sum()
         print(f"✓ Sector map: {mapped}/{len(sector_df)} symbols mapped")
     
     if not EARNINGS_FILE.exists():
@@ -120,9 +120,9 @@ def main():
         print("   Run:  python3 scripts/update_earnings_incremental.py")
         sys.exit(1)
     else:
-        earnings_df = pd. read_csv(EARNINGS_FILE)
+        earnings_df = pd.read_csv(EARNINGS_FILE)
         print(f"✓ Earnings calendar: {len(earnings_df)} events")
-        print(f"  Date range: {earnings_df['earnings_date'].min()} to {earnings_df['earnings_date']. max()}")
+        print(f"  Date range: {earnings_df['earnings_date'].min()} to {earnings_df['earnings_date'].max()}")
     
     print(f"{'='*60}\n")
     
@@ -143,7 +143,7 @@ def main():
     etf_files = list(ETF_CACHE_DIR.glob("*.parquet"))
     print(f"Files in {ETF_CACHE_DIR}:")
     for f in sorted(etf_files):
-        print(f"  {f. name}")
+        print(f"  {f.name}")
     print(f"{'='*60}\n")
     # 2.Augment + enhance ONLY new/changed tickers (fast)
     run(f"python3 scripts/augment_caches_fast.py --processes 2 --cache-dir {TICKER_CACHE_DIR} --overwrite")
