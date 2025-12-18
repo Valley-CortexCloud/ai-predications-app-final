@@ -79,14 +79,24 @@ jobs:
           python3 scripts/fetch_ticker_universe.py
       
       - name:  Commit ticker universe if changed
-        if: ${{ ! inputs.skip_universe }}
+        if: ${{ !  inputs.skip_universe }}
         run: |
-          if git diff --quiet config/ticker_universe.csv; then
-            echo "No changes to ticker universe"
-            echo "universe_changed=false" >> $GITHUB_ENV
+          # Check if file exists and has changes, OR if it's new
+          if [ -f config/ticker_universe.csv ]; then
+            if git diff --quiet config/ticker_universe.csv; then
+              echo "No changes to ticker universe"
+              echo "universe_changed=false" >> $GITHUB_ENV
+            else
+              echo "universe_changed=true" >> $GITHUB_ENV
+              CHANGED=true
+            fi
           else
+            # File is new
             echo "universe_changed=true" >> $GITHUB_ENV
-            
+            CHANGED=true
+          fi
+          
+          if [ "$CHANGED" = "true" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add config/ticker_universe.csv
@@ -119,24 +129,33 @@ jobs:
             --cache-requests \
             --with-heuristics
       
-      - name: Commit sector map if changed
+      - name:   Commit sector map if changed
         run: |
-          if git diff --quiet config/sector_map.csv; then
-            echo "No changes to sector map"
-            echo "sector_changed=false" >> $GITHUB_ENV
+          # Check if file exists and has changes, OR if it's new
+          if [ -f config/sector_map.csv ]; then
+            if git diff --quiet config/sector_map.csv; then
+              echo "No changes to sector map"
+              echo "sector_changed=false" >> $GITHUB_ENV
+            else
+              echo "sector_changed=true" >> $GITHUB_ENV
+              CHANGED=true
+            fi
           else
+            # File is new
             echo "sector_changed=true" >> $GITHUB_ENV
-            
+            CHANGED=true
+          fi
+          
+          if [ "$CHANGED" = "true" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add config/sector_map.csv
             
             MAPPED=$(tail -n +2 config/sector_map.csv | wc -l)
             GICS=$(tail -n +2 config/sector_map.csv | cut -d',' -f3 | grep -c "gics" || true)
-            
             DATE=$(date -u +%Y-%m-%d)
             
-            git commit -m "chore:  update sector map" \
+            git commit -m "chore:   update sector map" \
                        -m "" \
                        -m "- Total mapped: $MAPPED" \
                        -m "- GICS (S&P 500): $GICS" \
@@ -164,8 +183,8 @@ jobs:
       - name: Update earnings calendar
         env:
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
-          FMP_API_KEY: ${{ secrets. FMP_API_KEY }}
-          ALPHAVANTAGE_API_KEY: ${{ secrets. ALPHAVANTAGE_API_KEY }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
         run: |
           echo "📊 Updating earnings calendar..."
           python3 scripts/update_earnings_incremental.py \
@@ -176,23 +195,34 @@ jobs:
             --provider-order yahoo,finnhub,fmp,alphavantage \
             --verbose
       
-      - name:  Commit earnings if changed
+      - name: Commit earnings if changed
         run: |
-          if git diff --quiet data/earnings.csv; then
-            echo "No changes to earnings calendar"
-            echo "earnings_changed=false" >> $GITHUB_ENV
+          # Check if file exists and has changes, OR if it's new
+          if [ -f data/earnings.csv ]; then
+            if git diff --quiet data/earnings.csv; then
+              echo "No changes to earnings calendar"
+              echo "earnings_changed=false" >> $GITHUB_ENV
+            else
+              echo "earnings_changed=true" >> $GITHUB_ENV
+              CHANGED=true
+            fi
           else
+            # File is new
             echo "earnings_changed=true" >> $GITHUB_ENV
-            
+            CHANGED=true
+          fi
+          
+          if [ "$CHANGED" = "true" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add data/earnings.csv
             
             ROWS=$(wc -l < data/earnings.csv)
             SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
+            LOOKBACK=${{ steps.earnings_lookback.outputs.days }}
             DATE=$(date -u +%Y-%m-%d)
             
-            git commit -m "chore:  update earnings calendar" \
+            git commit -m "chore:   update earnings calendar" \
                        -m "" \
                        -m "- Total rows: $ROWS" \
                        -m "- Symbols: $SYMBOLS" \
