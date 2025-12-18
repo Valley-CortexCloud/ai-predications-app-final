@@ -110,30 +110,74 @@ print(f"💰 Estimated API cost: ${total_cost:.4f} (~{response.usage.total_token
 # ============================================================================
 raw_content = response.choices[0].message.content.strip()
 
+# Remove markdown fencing
 if "```json" in raw_content:
     raw_content = raw_content.split("```json")[1].split("```")[0].strip()
 elif "```" in raw_content:
-    raw_content = raw_content.split("```")[1].strip()
+    raw_content = raw_content. split("```")[1].strip()
 
 try:
     parsed = json.loads(raw_content)
 
+    # Extract stock data
     if isinstance(parsed, list):
+        # Format 1: Direct array [{"rank": 1,... }, {"rank":2,...}]
         data = parsed
+        print(f"✅ Received direct array ({len(data)} items)")
+    
     elif isinstance(parsed, dict):
-        # Handle wrapped responses
-        for key in ["stocks", "results", "data", "rankings", "array", "output", "supercharged"]:
+        # Format 2: Wrapped {"supercharged":  [{... }, {...}]}
+        found = False
+        for key in ["stocks", "results", "data", "rankings", "array", "output", "supercharged", "analysis"]:
             if key in parsed and isinstance(parsed[key], list):
                 data = parsed[key]
+                found = True
+                print(f"✅ Extracted {len(data)} items from wrapper key:  '{key}'")
                 break
-        else:
-            data = [parsed]  # single object
+        
+        if not found: 
+            # Format 3: Single stock dict (edge case)
+            data = [parsed]
+            print(f"⚠️  WARNING: Received single dict (expected list for {len(stocks)} stocks)")
+    
     else:
-        raise ValueError("Unexpected response format")
+        raise ValueError(f"Unexpected response type: {type(parsed)}")
+
+    # Final safety: ensure data is a list
+    if not isinstance(data, list):
+        data = [data]
 
 except json.JSONDecodeError as e:
-    raise ValueError(f"JSON parsing failed: {e}\nFirst 500 chars: {raw_content[:500]}")
+    print(f"❌ JSON PARSING FAILED!")
+    print(f"Error:  {e}")
+    print(f"Raw response (first 500 chars):\n{raw_content[:500]}")
+    raise ValueError(f"Grok returned invalid JSON")
 
+# ============================================================================
+# VALIDATION:  Confirm Stock Count
+# ============================================================================
+expected_count = len(stocks)
+actual_count = len(data)
+
+if actual_count != expected_count:
+    print(f"\n🚨 STOCK COUNT MISMATCH!")
+    print(f"   Expected: {expected_count}")
+    print(f"   Got: {actual_count}")
+    
+    # Debug: show structure
+    print(f"\n   Parsed type: {type(parsed)}")
+    if isinstance(parsed, dict):
+        print(f"   Dict keys: {list(parsed.keys())}")
+        for k, v in parsed.items():
+            if isinstance(v, (list, dict)):
+                print(f"     {k}: {type(v).__name__} (len={len(v)})")
+    
+    print(f"\n   → MANUAL REVIEW REQUIRED!")
+    # Don't crash - let user inspect output
+else:
+    print(f"✅ Successfully extracted {actual_count} stocks")
+
+# Create DataFrame
 result_df = pd.DataFrame(data)
 # ============================================================================
 # VALIDATION:  Confirm Stock Count
