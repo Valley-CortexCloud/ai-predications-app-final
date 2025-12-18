@@ -208,7 +208,7 @@ with ThreadPoolExecutor(max_workers=8) as executor:
         else:
             status = "="
         
-        print(f"  [{completed: 2d}/20] {status} {result['symbol']: 6s} | #{result['rank']:2d} → #{result['supercharged_rank']: 2d} | {result['conviction']: 12s} | ${result.get('_api_cost', 0):.4f}")
+        print(f"  [{completed:2d}/20] {status} {result['symbol']: 6s} | #{result['rank']:2d} → #{result['supercharged_rank']:2d} | {result['conviction']:12s} | ${result.get('_api_cost', 0):.4f}")
 
 # ============================================================================
 # DataFrame + Analytics
@@ -252,14 +252,14 @@ big_downgrades = result_df[result_df['rank_change'] <= -5].sort_values('supercha
 if len(big_upgrades) > 0:
     print(f"🚀 MAJOR UPGRADES (≥5 ranks):")
     for _, row in big_upgrades.iterrows():
-        print(f"   {row['symbol']: 6s}:  #{row['rank']:2d} → #{row['supercharged_rank']:2d} (+{row['rank_change']:2d}) | {row['conviction']}")
+        print(f"   {row['symbol']:6s}: #{row['rank']:2d} → #{row['supercharged_rank']:2d} ({row['rank_change']:2d}) | {row['conviction']}")
         print(f"      Reason: {row['predicted_excess'][: 80]}...")
     print()
 
 if len(big_downgrades) > 0:
     print(f"⚠️  MAJOR DOWNGRADES (≥5 ranks):")
     for _, row in big_downgrades.iterrows():
-        print(f"   {row['symbol']: 6s}: #{row['rank']: 2d} → #{row['supercharged_rank']:2d} ({row['rank_change']:2d}) | {row['conviction']}")
+        print(f"   {row['symbol']:6s}: #{row['rank']:2d} → #{row['supercharged_rank']:2d} ({row['rank_change']:2d}) | {row['conviction']}")
         print(f"      Reason: {row.get('fundamental_edge', 'N/A')[:80]}...")
     print()
 
