@@ -12,6 +12,10 @@ MODEL_DIR = ROOT / "model"
 DATASETS_DIR = ROOT / "datasets"
 PREDICTIONS_PATH = DATASETS_DIR / "predictions.csv"
 
+TICKER_UNIVERSE = ROOT / "config" / "ticker_universe.csv"
+SECTOR_MAP = ROOT / "config" / "sector_map.csv"
+EARNINGS_FILE = ROOT / "data" / "earnings. csv"
+
 def run(cmd):
     print(f"Running: {cmd}")
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -88,7 +92,40 @@ def inspect_spy_parquet(label, spy_files, previous_df=None):
 def main():
     today = datetime.now().strftime("%Y-%m-%d")
     print(f"=== Daily Top 20 Pipeline - {today} ===")
-
+    
+   # ✅ VALIDATE:   Check committed data files exist
+    print(f"\n{'='*60}")
+    print("VALIDATING COMMITTED DATA FILES")
+    print(f"{'='*60}")
+    
+    if not TICKER_UNIVERSE.exists():
+        print(f"❌ Ticker universe not found: {TICKER_UNIVERSE}")
+        print("   Run: python3 scripts/fetch_ticker_universe.py")
+        sys.exit(1)
+    else:
+        universe_df = pd.read_csv(TICKER_UNIVERSE)
+        print(f"✓ Ticker universe:  {len(universe_df)} tickers")
+    
+    if not SECTOR_MAP.exists():
+        print(f"❌ Sector map not found: {SECTOR_MAP}")
+        print("   Run: python3 scripts/build_sector_map.py")
+        sys.exit(1)
+    else:
+        sector_df = pd.read_csv(SECTOR_MAP)
+        mapped = sector_df['sector_etf']. notna().sum()
+        print(f"✓ Sector map: {mapped}/{len(sector_df)} symbols mapped")
+    
+    if not EARNINGS_FILE.exists():
+        print(f"❌ Earnings calendar not found: {EARNINGS_FILE}")
+        print("   Run:  python3 scripts/update_earnings_incremental.py")
+        sys.exit(1)
+    else:
+        earnings_df = pd. read_csv(EARNINGS_FILE)
+        print(f"✓ Earnings calendar: {len(earnings_df)} events")
+        print(f"  Date range: {earnings_df['earnings_date'].min()} to {earnings_df['earnings_date']. max()}")
+    
+    print(f"{'='*60}\n")
+    
     # 1.Fetch only latest data for universe + benchmarks (incremental)
     run(f"python3 scripts/fetch_history_bulletproof.py --universe sp500 --period 2y --adjusted --out-dir {TICKER_CACHE_DIR} --max-workers 1")
     run(f"python3 scripts/fetch_history_bulletproof.py --universe nasdaq --period 2y --adjusted --out-dir {TICKER_CACHE_DIR} --max-workers 1")
@@ -132,10 +169,8 @@ def main():
     # DEBUG 3: After enhance
     spy_after_enhance = inspect_spy_parquet("AFTER ENHANCE", spy_files, previous_df=spy_after_augment)
 
-    run(f"python3 scripts/build_earnings_calendar.py --start 2020-01-01 --out data/earnings.csv --verbose")
-
     # 3.Build today's feature dataset (latest date only)
-    run(f"python3 scripts/build_labels_final.py --cache-dir {TICKER_CACHE_DIR} --output {DATASETS_DIR}/today_features.parquet --earnings-file data/earnings.csv --production-only")
+    run(f"python3 scripts/build_labels_final.py --cache-dir {TICKER_CACHE_DIR} --output {DATASETS_DIR}/today_features.parquet --earnings-file {EARNINGS_FILE} --production-only")
 
     # Load and validate dataset
     today_features_path = DATASETS_DIR / "today_features.parquet"
