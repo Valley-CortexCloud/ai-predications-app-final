@@ -21,7 +21,6 @@ jobs:
         with:
           path: |
             data_cache
-            data
             datasets
           key: data-cache-v6-${{ github.run_date }}-${{ github.run_number }}
           restore-keys: |
