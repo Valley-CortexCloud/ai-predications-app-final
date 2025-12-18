@@ -53,7 +53,7 @@ def parse_args():
     ap = argparse.ArgumentParser(description="Ultimate feature enhancement (market + cross-sectional + interactions)")
     ap.add_argument("--features-dir", type=str, default=str(TICKER_CACHE_DIR))
     ap.add_argument("--cache-dir", type=str, default=str(TICKER_CACHE_DIR))
-    ap.add_argument("--sector-map", type=str, default=None)
+    ap.add_argument("--sector-map", type=str, default="config/sector_map.csv")
     ap.add_argument("--overwrite", action="store_true")
     ap.add_argument("--processes", type=int, default=4)
     ap.add_argument("--limit", type=int, default=0)
