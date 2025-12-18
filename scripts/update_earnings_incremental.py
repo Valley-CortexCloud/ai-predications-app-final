@@ -8,6 +8,7 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime, timedelta
 import sys
+import random 
 
 script_dir = Path(__file__).parent  # scripts/data/
 scripts_root = script_dir.parent     # scripts/
@@ -66,7 +67,9 @@ def main():
     
     # Load symbols
     symbols = load_symbols(args.symbols_file)
-    
+    random.shuffle(symbols)
+    print(f"✓ Loaded {len(symbols)} symbols from {args.ticker_universe} (randomized order)")
+
     if args.max_symbols > 0:
         symbols = symbols[:args. max_symbols]
         print(f"⚠️  Limited to {args.max_symbols} symbols for testing")
