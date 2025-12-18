@@ -164,7 +164,7 @@ def main():
     # DEBUG 2: After augment
     spy_after_augment = inspect_spy_parquet("AFTER AUGMENT", spy_files, previous_df=spy_after_fetch)
     
-    run(f"python3 scripts/enhance_features_final.py --processes 2 --cache-dir {TICKER_CACHE_DIR} --overwrite")
+    run(f"python3 scripts/enhance_features_final.py --processes 2 --cache-dir {TICKER_CACHE_DIR} --sector-map {SECTOR_MAP} --overwrite")
     
     # DEBUG 3: After enhance
     spy_after_enhance = inspect_spy_parquet("AFTER ENHANCE", spy_files, previous_df=spy_after_augment)
