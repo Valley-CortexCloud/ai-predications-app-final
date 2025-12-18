@@ -24,13 +24,14 @@ client = OpenAI(
 csv_files = glob.glob("datasets/top20_*.csv")
 if not csv_files:
     raise FileNotFoundError("No top20_*.csv file found in datasets/")
+
 csv_path = csv_files[0]
 print(f"📊 Loading top20 data from: {csv_path}")
 df = pd.read_csv(csv_path)
 stocks = df['symbol'].tolist()[:20]
 
 # ============================================================================
-# Hallucination Guard (Strong but Realistic for Grok)
+# Hallucination Guard
 # ============================================================================
 hallucination_guard = """
 HALLUCINATION PREVENTION (CRITICAL):
@@ -43,7 +44,7 @@ HALLUCINATION PREVENTION (CRITICAL):
 - Your edge is logic + pattern recognition — not fabricating news."""
 
 # ============================================================================
-# Elite Prompt — Asymmetric Alpha for 63-Day Horizon
+# Elite Prompt
 # ============================================================================
 system_prompt = f"""You are Grok 4 Frontier, the world's most truth-seeking, asymmetric-alpha-hunting quant hedge fund PM with 30+ years crushing markets. Your sole mission: generate massive risk-adjusted excess returns over the next 63 trading days by identifying mispriced opportunities others miss.
 
@@ -53,7 +54,6 @@ Rules (OBEY STRICTLY):
 - Prioritize asymmetric setups: high conviction only when downside is capped and upside is uncapped.
 - Base claims on real-time X sentiment shifts, valuation vs fundamentals, and technical structure.
 - Supercharged_rank: 1 = highest expected 63-day risk-adjusted alpha.
-
 """ + hallucination_guard + """
 
 For each stock:
@@ -69,12 +69,12 @@ Output EXCLUSIVELY a valid JSON array — no markdown, no wrappers, no extra tex
 Strict keys:
 - rank: int (original 1-20)
 - symbol: str
-- predicted_excess: str (e.g., "+18-28% over 63 days: catalyst X undervalued")
-- sentiment: str ("bullish"/"bearish"/"neutral" + brief evidence or "limited real-time visibility")
-- fundamental_edge: str (moat/growth/risks — brutally honest)
-- technical_outlook: str (key patterns, levels, momentum)
+- predicted_excess: str
+- sentiment: str
+- fundamental_edge: str
+- technical_outlook: str
 - conviction: str ("Strong Buy"/"Buy"/"Hold"/"Avoid")
-- supercharged_rank: int (1 = best opportunity)
+- supercharged_rank: int (1 = best)
 - data_confidence: str ("high"/"medium"/"low")
 
 Few-shot example:
@@ -83,9 +83,9 @@ Few-shot example:
 Now supercharge these {len(stocks)} quant-ranked stocks for maximum 63-day alpha."""
 
 # ============================================================================
-# API Call — Full Grok 4
+# API Call
 # ============================================================================
-print(f"🚀 Calling Grok-4 to supercharge {len(stocks)} stocks (Monday pre-market run)...")
+print(f"🚀 Calling Grok-4 to supercharge {len(stocks)} stocks...")
 response = client.chat.completions.create(
     model="grok-4",
     messages=[
@@ -98,10 +98,10 @@ response = client.chat.completions.create(
 )
 
 # ============================================================================
-# Cost Tracking (Correct Grok 4 Pricing)
+# Cost Tracking
 # ============================================================================
 output_tokens = response.usage.completion_tokens
-rough_input_tokens = 3500 + (len(stocks) * 60)  # Conservative estimate
+rough_input_tokens = 3500 + (len(stocks) * 60)
 total_cost = (rough_input_tokens * 3.0 / 1_000_000) + (output_tokens * 15.0 / 1_000_000)
 print(f"💰 Estimated API cost: ${total_cost:.4f} (~{response.usage.total_tokens:,} tokens)")
 
@@ -117,76 +117,88 @@ elif "```" in raw_content:
 
 try:
     parsed = json.loads(raw_content)
+
+    if isinstance(parsed, list):
+        data = parsed
+    elif isinstance(parsed, dict):
+        # Handle wrapped responses
+        for key in ["stocks", "results", "data", "rankings", "array", "output", "supercharged"]:
+            if key in parsed and isinstance(parsed[key], list):
+                data = parsed[key]
+                break
+        else:
+            data = [parsed]  # single object
+    else:
+        raise ValueError("Unexpected response format")
+
 except json.JSONDecodeError as e:
     raise ValueError(f"JSON parsing failed: {e}\nFirst 500 chars: {raw_content[:500]}")
 
-if isinstance(parsed, dict):
-    for key in ["stocks", "results", "data", "rankings", "array", "output"]:
-        if key in parsed and isinstance(parsed[key], list):
-            data = parsed[key]
-            break
-    else:
-        data = [parsed]
-elif isinstance(parsed, list):
-    data = parsed
-else:
-    raise ValueError(f"Unexpected structure: {type(parsed)}")
-
 result_df = pd.DataFrame(data)
-
 # ============================================================================
-# Post-Run Analytics
+# VALIDATION:  Confirm Stock Count
+# ============================================================================
+expected_count = len(stocks)
+actual_count = len(result_df)
+
+if actual_count != expected_count:
+    print(f"\n⚠️  WARNING: Expected {expected_count} stocks, got {actual_count}")
+    print(f"   This may indicate Grok skipped stocks or returned duplicates.")
+    print(f"   Parsed structure type: {type(parsed)}")
+    
+    if isinstance(parsed, dict):
+        print(f"   Top-level keys: {list(parsed.keys())}")
+    
+    # Don't crash, but flag for manual review
+    print(f"   → MANUAL REVIEW REQUIRED!\n")
+else:
+    print(f"✅ Successfully extracted {actual_count} stocks\n")
+# ============================================================================
+# Post-Run Analytics & Save
 # ============================================================================
 result_df['rank_change'] = result_df['rank'] - result_df['supercharged_rank']
 result_df['grok_upgrade'] = result_df['rank_change'] > 0
 result_df['grok_downgrade'] = result_df['rank_change'] < 0
 
 print(f"\n{'='*60}")
-print("📊 GROK-4 SUPERCHARGE RESULTS (Monday Pre-Market)")
+print("📊 GROK-4 SUPERCHARGE RESULTS")
 print(f"{'='*60}")
 print(f"Stocks analyzed: {len(result_df)}")
 print(f"Grok upgrades: {result_df['grok_upgrade'].sum()}")
 print(f"Grok downgrades: {result_df['grok_downgrade'].sum()}")
 print(f"Unchanged: {(result_df['rank_change'] == 0).sum()}")
 
-# Low confidence stocks
+# Low confidence
 if 'data_confidence' in result_df.columns:
     low_conf = result_df[result_df['data_confidence'] == 'low']
     if len(low_conf) > 0:
-        print(f"\n⚠️ Low real-time visibility ({len(low_conf)} stocks): {', '.join(low_conf['symbol'].tolist())}")
+        print(f"\n⚠️ Low visibility ({len(low_conf)}): {', '.join(low_conf['symbol'].tolist())}")
 
-# Hallucination flags
+# Hallucination check
 def detect_hallucination_flags(df):
     flags = []
     for _, row in df.iterrows():
-        s = row['symbol']
         text = " ".join(str(row.get(k, "")) for k in ['sentiment', 'predicted_excess', 'fundamental_edge', 'technical_outlook'])
         if any(bad in text.lower() for bad in ["options activity", "gamma", "block trade", "insider buy", "insider sell"]):
-            flags.append(f"{s}: Mentioned unverifiable flow data")
-        if "+100%" in str(row.get('predicted_excess', '')) and "short squeeze" not in text.lower():
-            flags.append(f"{s}: Extreme return without squeeze justification")
+            flags.append(f"{row['symbol']}: Unverifiable flow mention")
     return flags
 
 hallucination_flags = detect_hallucination_flags(result_df)
 if hallucination_flags:
-    print(f"\n🚨 POTENTIAL HALLUCINATION FLAGS ({len(hallucination_flags)}):")
+    print(f"\n🚨 HALLUCINATION FLAGS ({len(hallucination_flags)}):")
     for f in hallucination_flags:
-        print(f"  • {f}")
+        print(f" • {f}")
 
 print(f"{'='*60}\n")
 
-# ============================================================================
-# Save Results + Metadata
-# ============================================================================
+# Save
 today = datetime.date.today().strftime("%Y-%m-%d")
 Path("datasets").mkdir(exist_ok=True)
-
 output_path = f"datasets/supercharged_top20_{today}.csv"
 result_df.to_csv(output_path, index=False)
 
 metadata = {
     "run_date": today,
-    "run_time_et": datetime.datetime.now().isoformat(),
     "num_stocks": len(stocks),
     "api_cost_usd": round(total_cost, 4),
     "total_tokens": response.usage.total_tokens,
@@ -194,10 +206,8 @@ metadata = {
     "grok_downgrades": int(result_df['grok_downgrade'].sum()),
     "hallucination_flags": len(hallucination_flags)
 }
-metadata_path = f"datasets/supercharged_metadata_{today}.json"
-with open(metadata_path, 'w') as f:
+with open(f"datasets/supercharged_metadata_{today}.json", 'w') as f:
     json.dump(metadata, f, indent=2)
 
-print(f"✅ Saved rankings → {output_path}")
-print(f"✅ Saved metadata → {metadata_path}")
+print(f"✅ Saved → {output_path}")
 print(f"🎯 Total cost: ${total_cost:.4f}")
