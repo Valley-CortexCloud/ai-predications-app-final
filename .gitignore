@@ -37,6 +37,7 @@ Thumbs.db
 
 # Logs
 *.log
+data_cache/sector_map.json
 
 # Data and models (optional - uncomment if needed)
 # data_cache/
