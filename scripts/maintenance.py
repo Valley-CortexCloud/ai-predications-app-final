@@ -84,7 +84,7 @@ def show_disk_usage():
     print("Disk Usage")
     print(f"{'='*60}")
     
-    import subprocess
+    import platform
     
     dirs = [
         ("Snapshots", SNAPSHOTS_DIR),
@@ -95,14 +95,39 @@ def show_disk_usage():
     for name, path in dirs:
         if path.exists():
             try:
-                result = subprocess.run(
-                    ["du", "-sh", str(path)],
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                size = result.stdout.split()[0]
-                print(f"{name:20s}: {size}")
+                # Cross-platform disk usage
+                if platform.system() == 'Windows':
+                    # Windows: use shutil for cross-platform compatibility
+                    import shutil
+                    total_size = 0
+                    for dirpath, dirnames, filenames in path.walk():
+                        for f in filenames:
+                            fp = dirpath / f
+                            if fp.exists():
+                                total_size += fp.stat().st_size
+                    
+                    # Convert to human-readable
+                    if total_size < 1024:
+                        size_str = f"{total_size}B"
+                    elif total_size < 1024**2:
+                        size_str = f"{total_size/1024:.1f}K"
+                    elif total_size < 1024**3:
+                        size_str = f"{total_size/(1024**2):.1f}M"
+                    else:
+                        size_str = f"{total_size/(1024**3):.2f}G"
+                    
+                    print(f"{name:20s}: {size_str}")
+                else:
+                    # Unix: use du command (faster)
+                    import subprocess
+                    result = subprocess.run(
+                        ["du", "-sh", str(path)],
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    size = result.stdout.split()[0]
+                    print(f"{name:20s}: {size}")
             except Exception as e:
                 print(f"{name:20s}: Error - {e}")
         else:

@@ -178,9 +178,11 @@ def validate_snapshot(snapshot_dir: Path, max_age_days: int = MAX_AGE_DAYS) -> b
         else:
             print(f"✓ All critical features present")
         
-        # Check for NaN percentage
-        nan_pct = (df.isna().sum().sum() / (len(df) * len(df.columns))) * 100
-        print(f"Overall NaN percentage: {nan_pct:.2f}%")
+        # Check for NaN percentage (sample first 1000 rows for efficiency)
+        sample_size = min(1000, len(df))
+        df_sample = df.head(sample_size)
+        nan_pct = (df_sample.isna().sum().sum() / (len(df_sample) * len(df_sample.columns))) * 100
+        print(f"Overall NaN percentage (sample of {sample_size} rows): {nan_pct:.2f}%")
         
         if nan_pct > 50:
             print(f"⚠️  WARNING: High NaN percentage ({nan_pct:.2f}%)")

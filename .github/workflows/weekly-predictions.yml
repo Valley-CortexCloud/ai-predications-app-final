@@ -41,46 +41,11 @@ jobs:
 
       - name: Create Top 20 portfolio
         run: |
-          python -c "
-          import pandas as pd
-          from pathlib import Path
-          
-          # Find latest predictions
-          datasets_dir = Path('datasets')
-          pred_files = sorted(datasets_dir.glob('predictions_*.csv'))
-          
-          if not pred_files:
-              print('No predictions found')
-              exit(1)
-          
-          pred_file = pred_files[-1]
-          print(f'Using predictions: {pred_file}')
-          
-          # Load predictions
-          pred_df = pd.read_csv(pred_file)
-          
-          # Filter and sort
-          valid = pred_df.copy()
-          
-          if 'adv20_dollar' in valid.columns:
-              valid = valid[valid['adv20_dollar'] >= 10_000_000]
-          
-          if 'price' in valid.columns:
-              valid = valid[(valid['price'] >= 15) & (valid['price'] <= 3000)]
-          
-          valid = valid.sort_values('pred', ascending=False)
-          
-          # Top 20
-          top20 = valid.head(20)[['symbol', 'pred']].reset_index(drop=True)
-          top20.index += 1
-          
-          # Save
-          date = pred_file.stem.split('_')[1]
-          top20.to_csv(f'datasets/top20_{date}.csv')
-          
-          print(f'\nTop 20 saved to datasets/top20_{date}.csv')
-          print(top20.to_string())
-          "
+          python scripts/create_top20.py \
+            --output-dir datasets \
+            --min-liquidity 10000000 \
+            --min-price 15 \
+            --max-price 3000
 
       - name: Upload predictions as artifact
         uses: actions/upload-artifact@v4

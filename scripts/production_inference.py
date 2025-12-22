@@ -112,15 +112,24 @@ def production_inference(snapshot_dir: Path, output_dir: Path, model_dir: Path) 
     
     # Step 2: Build labels (production-only mode, no feature computation)
     # Note: build_labels_final.py already has --production-only flag that filters to latest date
+    today_features_temp = today_features_path.with_suffix('.tmp.parquet')
+    
     build_labels_cmd = (
         f"python3 scripts/build_labels_final.py "
         f"--input {today_features_path} "
-        f"--output {today_features_path} "
+        f"--output {today_features_temp} "
         f"--earnings-file {EARNINGS_FILE} "
         f"--production-only"
     )
     
     run_command(build_labels_cmd, "Step 2: Building labels (production mode)")
+    
+    # Move temp file to final location on success
+    if today_features_temp.exists():
+        today_features_temp.rename(today_features_path)
+    else:
+        print(f"❌ Build labels did not create output file")
+        sys.exit(1)
     
     # Step 3: Apply ranker to generate predictions
     apply_ranker_cmd = (

@@ -351,8 +351,9 @@ def fetch_and_save(
                         break
                     except Exception as e:
                         last_err = str(e)
-                        time.sleep(wait)
-                        wait = min(wait * 2.0, 30.0)
+                        if attempt < max_retries - 1:  # Don't sleep on last attempt
+                            time.sleep(wait)
+                            wait = min(wait * 2.0, 30.0)
                 
                 if df_new is None or df_new.empty:
                     return (ticker, "skip:no-new-data")
@@ -443,8 +444,9 @@ def fetch_and_save(
             return (ticker, "ok")
         except Exception as e:
             last_err = str(e)
-            time.sleep(wait)
-            wait = min(wait * 2.0, 30.0)
+            if attempt < max_retries - 1:  # Don't sleep on last attempt
+                time.sleep(wait)
+                wait = min(wait * 2.0, 30.0)
 
     return (ticker, f"error:{last_err or 'unknown'}")
 
