@@ -71,17 +71,15 @@ jobs:
           python scripts/fetch_history_bulletproof.py \
             --universe sp500 \
             --period 2y \
-            --adjusted \
             --out-dir data_cache/10y_ticker_features \
-            --max-workers 4 \
+            --max-workers 1 \
             --incremental
           
           python scripts/fetch_history_bulletproof.py \
             --universe nasdaq \
             --period 2y \
-            --adjusted \
             --out-dir data_cache/10y_ticker_features \
-            --max-workers 4 \
+            --max-workers 1 \
             --incremental
           
           # Fetch benchmark ETFs (incremental mode)
@@ -89,7 +87,7 @@ jobs:
             --tickers "SPY,^VIX,TLT,BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" \
             --period 2y \
             --out-dir data_cache/_etf_cache \
-            --max-workers 2 \
+            --max-workers 1 \
             --incremental
 
       - name: Augment features (incremental)
