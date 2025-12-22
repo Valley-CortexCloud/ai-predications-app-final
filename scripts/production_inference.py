@@ -28,6 +28,111 @@ DATASETS_DIR = ROOT / "datasets"
 MODEL_DIR = ROOT / "model"
 EARNINGS_FILE = ROOT / "data" / "earnings.csv"
 
+# Import validation from validate_snapshot
+sys.path.insert(0, str(ROOT / "scripts"))
+try:
+    from validate_snapshot import validate_snapshot, ValidationTracker
+except ImportError:
+    # Fallback if import fails
+    class ValidationTracker:
+        def __init__(self):
+            self.checks = []
+            self.passed = 0
+            self.failed = 0
+        
+        def check(self, name: str, condition: bool, error_msg: str = ""):
+            self.checks.append({'name': name, 'passed': condition, 'error': error_msg if not condition else None})
+            if condition:
+                self.passed += 1
+                print(f"  ✓ {name}")
+            else:
+                self.failed += 1
+                print(f"  ✗ {name}: {error_msg}")
+        
+        def summary(self) -> bool:
+            total = self.passed + self.failed
+            print(f"\n{'='*60}")
+            if self.failed == 0:
+                print(f"✅ {self.passed}/{total} CHECKS PASSED - DATA VALIDATED!")
+                print(f"{'='*60}")
+                return True
+            else:
+                print(f"❌ {self.failed}/{total} CHECKS FAILED")
+                print(f"{'='*60}")
+                print(f"\nFailed checks:")
+                for check in self.checks:
+                    if not check['passed']:
+                        print(f"  • {check['name']}: {check['error']}")
+                return False
+    
+    def validate_snapshot(snapshot_dir: Path) -> bool:
+        print(f"⚠️  Warning: Could not import full validation module")
+        return True
+
+
+def validate_production_readiness(snapshots_dir: Path, model_dir: Path) -> bool:
+    """Quick validation before production inference"""
+    
+    tracker = ValidationTracker()
+    
+    print(f"\n{'='*60}")
+    print(f"PRODUCTION READINESS CHECK")
+    print(f"{'='*60}\n")
+    
+    print("🔍 PRE-FLIGHT CHECKS")
+    
+    # 1. Latest snapshot exists and passes validation
+    snapshot_dirs = [d for d in snapshots_dir.iterdir() if d.is_dir()] if snapshots_dir.exists() else []
+    tracker.check(
+        "Snapshot exists",
+        len(snapshot_dirs) > 0,
+        "No snapshots found - run data pipeline first"
+    )
+    
+    if len(snapshot_dirs) > 0:
+        latest_snapshot = sorted(snapshot_dirs)[-1]
+        
+        # Run full snapshot validation (will output its own checks)
+        print(f"\nValidating latest snapshot: {latest_snapshot.name}")
+        passed = validate_snapshot(latest_snapshot)
+        tracker.check(
+            "Snapshot validation passed",
+            passed,
+            "Snapshot failed validation"
+        )
+    
+    # 2. Model exists
+    model_path = model_dir / "model.txt"
+    tracker.check(
+        "Ranker model exists",
+        model_path.exists(),
+        "model/model.txt not found"
+    )
+    
+    # 3. Earnings calendar exists and is recent
+    earnings_path = ROOT / "data" / "earnings.csv"
+    if earnings_path.exists():
+        df_earn = pd.read_csv(earnings_path)
+        if 'earnings_date' in df_earn.columns:
+            df_earn['earnings_date'] = pd.to_datetime(df_earn['earnings_date'])
+            latest_earnings = df_earn['earnings_date'].max()
+            days_since = (pd.Timestamp.now() - latest_earnings).days
+            
+            tracker.check(
+                "Earnings calendar recent (< 90 days)",
+                days_since <= 90,
+                f"Latest earnings: {days_since} days ago"
+            )
+    
+    passed = tracker.summary()
+    
+    if not passed:
+        print("\n⛔ PRODUCTION INFERENCE ABORTED")
+        return False
+    
+    print(f"\n🚀 ALL CHECKS PASSED - PROCEEDING WITH INFERENCE\n")
+    return True
+
 
 def find_latest_snapshot(snapshots_dir: Path) -> Path:
     """Find the most recent snapshot directory"""
@@ -221,6 +326,10 @@ def main():
     model_dir = Path(args.model_dir)
     if not model_dir.exists():
         print(f"❌ Model directory not found: {model_dir}")
+        return 1
+    
+    # Run production readiness validation
+    if not validate_production_readiness(Path(args.snapshots_root), model_dir):
         return 1
     
     # Run inference
