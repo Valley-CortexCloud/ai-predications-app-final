@@ -31,8 +31,11 @@ jobs:
       - name: Validate snapshot freshness
         run: |
           python scripts/validate_snapshot.py \
-            --snapshots-root data/snapshots \
-            --max-age-days 7
+            --snapshots-root data/snapshots
+          if [ $? -ne 0 ]; then
+            echo "❌ Snapshot validation failed - aborting"
+            exit 1
+          fi
 
       - name: Production inference (using cached snapshot)
         run: |

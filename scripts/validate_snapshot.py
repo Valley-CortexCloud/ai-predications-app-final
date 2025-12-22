@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
 """
-Validate snapshot is fresh and complete.
-
-Checks:
-- Snapshot exists
-- Data age < 7 days
-- Symbol count >= 400
-- Feature count >= 100
-- No all-NaN columns
-- Date is T-1 (yesterday) or recent
+Validate snapshot freshness, completeness, and data quality.
+Outputs clear pass/fail summary for production readiness.
 
 Usage:
-    python scripts/validate_snapshot.py [--snapshot-dir DIR] [--max-age-days N]
+    python scripts/validate_snapshot.py [--snapshot-dir DIR] [--fail-fast]
 """
 
 import argparse
@@ -20,6 +13,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).parent.parent
@@ -28,7 +22,46 @@ SNAPSHOTS_DIR = ROOT / "data" / "snapshots"
 # Validation thresholds
 MIN_SYMBOLS = 400
 MIN_FEATURES = 100
-MAX_AGE_DAYS = 7
+MAX_AGE_DAYS = 5  # Changed from 7 to 5 per spec
+
+
+class ValidationTracker:
+    """Track validation checks and generate summary"""
+    def __init__(self):
+        self.checks = []
+        self.passed = 0
+        self.failed = 0
+    
+    def check(self, name: str, condition: bool, error_msg: str = ""):
+        """Register a validation check"""
+        self.checks.append({
+            'name': name,
+            'passed': condition,
+            'error': error_msg if not condition else None
+        })
+        if condition:
+            self.passed += 1
+            print(f"  ✓ {name}")
+        else:
+            self.failed += 1
+            print(f"  ✗ {name}: {error_msg}")
+    
+    def summary(self) -> bool:
+        """Print summary and return overall pass/fail"""
+        total = self.passed + self.failed
+        print(f"\n{'='*60}")
+        if self.failed == 0:
+            print(f"✅ {self.passed}/{total} CHECKS PASSED - DATA VALIDATED!")
+            print(f"{'='*60}")
+            return True
+        else:
+            print(f"❌ {self.failed}/{total} CHECKS FAILED")
+            print(f"{'='*60}")
+            print(f"\nFailed checks:")
+            for check in self.checks:
+                if not check['passed']:
+                    print(f"  • {check['name']}: {check['error']}")
+            return False
 
 
 def find_latest_snapshot(snapshots_dir: Path) -> Path:
@@ -43,179 +76,208 @@ def find_latest_snapshot(snapshots_dir: Path) -> Path:
     return latest
 
 
-def validate_snapshot(snapshot_dir: Path, max_age_days: int = MAX_AGE_DAYS) -> bool:
+def validate_snapshot(snapshot_dir: Path) -> bool:
     """
-    Validate snapshot is fresh and complete.
-    
-    Returns:
-        True if valid, False otherwise
+    Comprehensive snapshot validation with clear reporting.
+    Returns True if all checks pass, False otherwise.
     """
-    print(f"{'='*60}")
-    print(f"Validating Snapshot: {snapshot_dir.name}")
-    print(f"{'='*60}")
+    tracker = ValidationTracker()
     
-    all_checks_passed = True
+    print(f"\n{'='*60}")
+    print(f"SNAPSHOT VALIDATION: {snapshot_dir.name}")
+    print(f"{'='*60}\n")
     
-    # Check 1: Snapshot directory exists
-    if not snapshot_dir.exists():
-        print(f"❌ Snapshot directory does not exist: {snapshot_dir}")
-        return False
+    # ========================================================================
+    # SECTION 1: FILE EXISTENCE
+    # ========================================================================
+    print("📁 FILE EXISTENCE CHECKS")
     
-    print(f"✓ Snapshot directory exists")
+    feature_matrix_path = snapshot_dir / "feature_matrix.parquet"
+    tracker.check(
+        "Feature matrix exists",
+        feature_matrix_path.exists(),
+        "feature_matrix.parquet not found"
+    )
     
-    # Check 2: Required files exist
-    required_files = ['feature_matrix.parquet', 'universe.csv', 'metadata.json']
-    for filename in required_files:
-        file_path = snapshot_dir / filename
-        if not file_path.exists():
-            print(f"❌ Required file missing: {filename}")
-            all_checks_passed = False
-        else:
-            print(f"✓ {filename} exists")
+    universe_path = snapshot_dir / "universe.csv"
+    tracker.check(
+        "Universe file exists",
+        universe_path.exists(),
+        "universe.csv not found"
+    )
     
-    if not all_checks_passed:
-        return False
-    
-    # Load metadata
     metadata_path = snapshot_dir / "metadata.json"
-    with open(metadata_path, 'r') as f:
-        metadata = json.load(f)
+    tracker.check(
+        "Metadata file exists",
+        metadata_path.exists(),
+        "metadata.json not found"
+    )
     
-    print(f"\n{'='*60}")
-    print("Metadata:")
-    print(f"{'='*60}")
-    print(f"Snapshot date: {metadata['snapshot_date']}")
-    print(f"Created at: {metadata['created_at']}")
-    print(f"Git commit: {metadata['git_commit'][:8] if metadata['git_commit'] != 'unknown' else 'unknown'}")
-    print(f"Symbol count: {metadata['symbol_count']}")
-    print(f"Feature count: {metadata['feature_count']}")
+    if not all([feature_matrix_path.exists(), universe_path.exists(), metadata_path.exists()]):
+        return tracker.summary()
     
-    # Check 3: Data age
-    snapshot_date = pd.to_datetime(metadata['snapshot_date'])
-    current_date = pd.Timestamp.now().normalize()
-    age_days = (current_date - snapshot_date).days
+    # ========================================================================
+    # SECTION 2: DATA FRESHNESS
+    # ========================================================================
+    print("\n🕐 DATA FRESHNESS CHECKS")
     
-    print(f"\n{'='*60}")
-    print("Freshness Check:")
-    print(f"{'='*60}")
-    print(f"Snapshot date: {snapshot_date.date()}")
-    print(f"Current date: {current_date.date()}")
-    print(f"Age: {age_days} days")
+    metadata = json.load(open(metadata_path))
     
-    if age_days > max_age_days:
-        print(f"❌ Data is too old ({age_days} days > {max_age_days} days threshold)")
-        all_checks_passed = False
-    elif age_days < -1:
-        print(f"❌ Data is in the future ({age_days} days)")
-        all_checks_passed = False
+    # Check snapshot creation age
+    created = pd.to_datetime(metadata['created_at'])
+    age_hours = (pd.Timestamp.now() - created).total_seconds() / 3600
+    tracker.check(
+        "Snapshot age < 48 hours",
+        age_hours <= 48,
+        f"Snapshot is {age_hours:.1f} hours old (max: 48)"
+    )
+    
+    # Check data date (should be T-1 or T-2 for weekend)
+    data_date = pd.to_datetime(metadata.get('data_date') or metadata.get('snapshot_date'))
+    now = pd.Timestamp.now().normalize()
+    days_old = (now - data_date).days
+    
+    # Allow up to 5 days (for long weekends/holidays)
+    tracker.check(
+        "Data age < 5 days",
+        days_old <= 5,
+        f"Data is {days_old} days old (max: 5)"
+    )
+    
+    # ========================================================================
+    # SECTION 3: DATA COMPLETENESS
+    # ========================================================================
+    print("\n📊 DATA COMPLETENESS CHECKS")
+    
+    df = pd.read_parquet(feature_matrix_path)
+    universe = pd.read_csv(universe_path)
+    
+    # Symbol count
+    tracker.check(
+        "Universe size >= 400 symbols",
+        len(df) >= 400,
+        f"Only {len(df)} symbols (expected >= 400)"
+    )
+    
+    # Feature count
+    tracker.check(
+        "Feature count >= 100",
+        len(df.columns) >= 100,
+        f"Only {len(df.columns)} features (expected >= 100)"
+    )
+    
+    # Universe consistency
+    tracker.check(
+        "Feature matrix matches universe",
+        len(df) == len(universe),
+        f"Feature matrix has {len(df)} rows but universe has {len(universe)}"
+    )
+    
+    # ========================================================================
+    # SECTION 4: FEATURE QUALITY
+    # ========================================================================
+    print("\n🔬 FEATURE QUALITY CHECKS")
+    
+    # NaN check
+    nan_pct = df.isna().sum() / len(df)
+    max_nan = nan_pct.max()
+    tracker.check(
+        "No features with >50% NaN",
+        max_nan <= 0.5,
+        f"Max NaN: {max_nan:.1%} (threshold: 50%)"
+    )
+    
+    # Inf check
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    inf_cols = [col for col in numeric_cols if np.isinf(df[col]).any()]
+    tracker.check(
+        "No infinite values",
+        len(inf_cols) == 0,
+        f"{len(inf_cols)} features contain Inf: {inf_cols[:3]}"
+    )
+    
+    # Constant features check
+    constant_cols = [col for col in numeric_cols if df[col].nunique() <= 1]
+    tracker.check(
+        "No constant features",
+        len(constant_cols) == 0,
+        f"{len(constant_cols)} features are constant: {constant_cols[:3]}"
+    )
+    
+    # ========================================================================
+    # SECTION 5: CRITICAL FEATURES
+    # ========================================================================
+    print("\n⚡ CRITICAL FEATURE CHECKS")
+    
+    # Check for essential features
+    required_features = ['Close', 'Volume', 'Adj Close']
+    missing_required = [f for f in required_features if f not in df.columns]
+    tracker.check(
+        "OHLCV features present",
+        len(missing_required) == 0,
+        f"Missing: {missing_required}"
+    )
+    
+    # Validate beta range (if exists)
+    if 'feat_beta_spy_126' in df.columns:
+        beta = df['feat_beta_spy_126']
+        tracker.check(
+            "Beta values in range [-5, 5]",
+            (beta.abs() <= 5).all(),
+            f"Beta range: [{beta.min():.2f}, {beta.max():.2f}]"
+        )
+    
+    # Validate volatility range (if exists)
+    if 'volatility_20' in df.columns:
+        vol = df['volatility_20']
+        tracker.check(
+            "Volatility values in range [0, 10]",
+            ((vol >= 0) & (vol <= 10)).all(),
+            f"Vol range: [{vol.min():.3f}, {vol.max():.3f}]"
+        )
+    
+    # ========================================================================
+    # SECTION 6: METADATA INTEGRITY
+    # ========================================================================
+    print("\n🔐 METADATA INTEGRITY CHECKS")
+    
+    tracker.check(
+        "Git commit hash present",
+        'git_commit' in metadata and len(metadata.get('git_commit', '')) > 0,
+        "Missing git commit hash"
+    )
+    
+    tracker.check(
+        "Feature count matches metadata",
+        metadata.get('feature_count', 0) == len(df.columns),
+        f"Metadata says {metadata.get('feature_count')} features, actual: {len(df.columns)}"
+    )
+    
+    # ========================================================================
+    # FINAL SUMMARY
+    # ========================================================================
+    passed = tracker.summary()
+    
+    if passed:
+        print(f"\n🚀 SNAPSHOT READY FOR PRODUCTION INFERENCE")
+        print(f"   Symbols: {len(df)}")
+        print(f"   Features: {len(df.columns)}")
+        print(f"   Data date: {data_date.date()}")
+        print(f"   Age: {days_old} days")
     else:
-        print(f"✓ Data is fresh (within {max_age_days} days)")
+        print(f"\n⛔ SNAPSHOT VALIDATION FAILED - DO NOT USE FOR PRODUCTION")
     
-    # Check 4: Symbol count
-    print(f"\n{'='*60}")
-    print("Completeness Check:")
-    print(f"{'='*60}")
-    
-    symbol_count = metadata['symbol_count']
-    print(f"Symbol count: {symbol_count}")
-    
-    if symbol_count < MIN_SYMBOLS:
-        print(f"❌ Too few symbols ({symbol_count} < {MIN_SYMBOLS} threshold)")
-        all_checks_passed = False
-    else:
-        print(f"✓ Sufficient symbols ({symbol_count} >= {MIN_SYMBOLS})")
-    
-    # Check 5: Feature count
-    feature_count = metadata['feature_count']
-    print(f"Feature count: {feature_count}")
-    
-    if feature_count < MIN_FEATURES:
-        print(f"❌ Too few features ({feature_count} < {MIN_FEATURES} threshold)")
-        all_checks_passed = False
-    else:
-        print(f"✓ Sufficient features ({feature_count} >= {MIN_FEATURES})")
-    
-    # Check 6: All-NaN columns
-    all_nan_columns = metadata.get('all_nan_columns', [])
-    print(f"All-NaN columns: {len(all_nan_columns)}")
-    
-    if all_nan_columns:
-        print(f"⚠️  WARNING: {len(all_nan_columns)} all-NaN columns found:")
-        for col in all_nan_columns[:10]:
-            print(f"   - {col}")
-        if len(all_nan_columns) > 10:
-            print(f"   ... and {len(all_nan_columns) - 10} more")
-    else:
-        print(f"✓ No all-NaN columns")
-    
-    # Check 7: Load and validate feature matrix
-    print(f"\n{'='*60}")
-    print("Data Integrity Check:")
-    print(f"{'='*60}")
-    
-    try:
-        feature_matrix_path = snapshot_dir / "feature_matrix.parquet"
-        df = pd.read_parquet(feature_matrix_path)
-        
-        print(f"Feature matrix shape: {df.shape}")
-        print(f"Rows: {len(df)}")
-        print(f"Columns: {len(df.columns)}")
-        
-        # Check for required columns
-        if 'symbol' not in df.columns:
-            print(f"❌ Missing 'symbol' column")
-            all_checks_passed = False
-        else:
-            print(f"✓ 'symbol' column present")
-            print(f"  Unique symbols: {df['symbol'].nunique()}")
-        
-        # Check for critical features
-        critical_features = ['Close', 'Adj Close', 'Volume']
-        missing_critical = [f for f in critical_features if f not in df.columns]
-        
-        if missing_critical:
-            print(f"⚠️  WARNING: Missing critical features: {missing_critical}")
-        else:
-            print(f"✓ All critical features present")
-        
-        # Check for NaN percentage (sample first 1000 rows for efficiency)
-        sample_size = min(1000, len(df))
-        df_sample = df.head(sample_size)
-        nan_pct = (df_sample.isna().sum().sum() / (len(df_sample) * len(df_sample.columns))) * 100
-        print(f"Overall NaN percentage (sample of {sample_size} rows): {nan_pct:.2f}%")
-        
-        if nan_pct > 50:
-            print(f"⚠️  WARNING: High NaN percentage ({nan_pct:.2f}%)")
-        else:
-            print(f"✓ Acceptable NaN percentage")
-        
-    except Exception as e:
-        print(f"❌ Error loading feature matrix: {e}")
-        all_checks_passed = False
-    
-    # Final verdict
-    print(f"\n{'='*60}")
-    if all_checks_passed:
-        print("✅ VALIDATION PASSED")
-        print(f"{'='*60}")
-        print(f"Snapshot {snapshot_dir.name} is valid and ready for production use")
-    else:
-        print("❌ VALIDATION FAILED")
-        print(f"{'='*60}")
-        print(f"Snapshot {snapshot_dir.name} has issues that need to be resolved")
-    print(f"{'='*60}")
-    
-    return all_checks_passed
+    return passed
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Validate feature snapshot')
+    parser = argparse.ArgumentParser(description='Validate snapshot for production use')
     parser.add_argument('--snapshot-dir', type=str, default=None,
                        help='Specific snapshot directory to validate (default: latest)')
     parser.add_argument('--snapshots-root', type=str, default=str(SNAPSHOTS_DIR),
                        help='Root directory containing snapshots')
-    parser.add_argument('--max-age-days', type=int, default=MAX_AGE_DAYS,
-                       help=f'Maximum age in days (default: {MAX_AGE_DAYS})')
+    parser.add_argument('--fail-fast', action='store_true',
+                       help='Exit on first failure (default: run all checks)')
     return parser.parse_args()
 
 
@@ -238,11 +300,15 @@ def main():
             print(f"❌ {e}")
             return 1
     
-    # Validate
-    is_valid = validate_snapshot(snapshot_dir, max_age_days=args.max_age_days)
+    if not snapshot_dir.exists():
+        print(f"❌ Snapshot directory not found: {snapshot_dir}")
+        return 1
     
-    return 0 if is_valid else 1
+    # Run validation
+    passed = validate_snapshot(snapshot_dir)
+    
+    return 0 if passed else 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

@@ -302,6 +302,29 @@ def fetch_yf_aligned(
     return yfdf[["Open", "High", "Low", "Close", "Adj Close", "Volume"]]
 
 
+# ----------------------- Validation helpers -----------------------
+def validate_incremental_append(ticker: str, df_combined: pd.DataFrame, df_new: pd.DataFrame) -> Tuple[str, str]:
+    """Validate appended data has no gaps or anomalies"""
+    
+    # Check for gaps > 5 trading days
+    date_diffs = df_combined.index.to_series().diff()
+    gaps = date_diffs[date_diffs > pd.Timedelta(days=7)]  # 5 trading days ~= 7 calendar
+    
+    if len(gaps) > 0:
+        gap_dates = gaps.index.tolist()[:3]  # Show first 3
+        return (ticker, f"warning:gaps_detected:{len(gaps)}_gaps_at_{gap_dates[0]}")
+    
+    # Check for price jumps (> 3x or < 0.33x)
+    if 'Close' in df_combined.columns:
+        close_ratio = df_combined['Close'] / df_combined['Close'].shift(1)
+        spikes = close_ratio[(close_ratio > 3) | (close_ratio < 0.33)]
+        
+        if len(spikes) > 0:
+            return (ticker, f"warning:price_spikes:{len(spikes)}_anomalies")
+    
+    return (ticker, f"ok:appended_{len(df_new)}_rows")
+
+
 # ----------------------- Worker -----------------------
 def fetch_and_save(
     ticker: str,
@@ -362,16 +385,13 @@ def fetch_and_save(
                 df_combined = pd.concat([existing_df, df_new]).sort_index()
                 df_combined = df_combined[~df_combined.index.duplicated(keep='last')]
                 
-                # Validation: check for gaps > 5 trading days
-                date_diffs = df_combined.index.to_series().diff()
-                max_gap = date_diffs.max().days if len(date_diffs) > 1 else 0
-                if max_gap > 7:  # Allow some flexibility for holidays
-                    print(f"Warning: {ticker} has gap of {max_gap} days")
+                # Comprehensive validation
+                result = validate_incremental_append(ticker, df_combined, df_new)
                 
                 # Save combined data
                 out_dir.mkdir(parents=True, exist_ok=True)
                 df_combined.to_parquet(out_path)
-                return (ticker, f"ok:appended_{len(df_new)}_rows")
+                return result
                 
         except Exception as e:
             print(f"Warning: {ticker} incremental failed: {e}, falling back to full fetch")
