@@ -55,6 +55,8 @@ def parse_args():
     ap.add_argument("--cache-dir", type=str, default=str(TICKER_CACHE_DIR))
     ap.add_argument("--sector-map", type=str, default="config/sector_map.csv")
     ap.add_argument("--overwrite", action="store_true")
+    ap.add_argument("--incremental", action="store_true",
+                   help="Only enhance new rows (append mode)")
     ap.add_argument("--processes", type=int, default=4)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--tickers", type=str, default=None)
@@ -402,7 +404,7 @@ def add_theme_acceleration(df: pd.DataFrame) -> pd.DataFrame:
 def process_ticker(ticker: str, features_dir: Path, cache_dir: Path,
                    sector_map: Dict[str, str], spy_df: pd.DataFrame,
                    vix_df: Optional[pd.DataFrame], crypto_df: Optional[pd.DataFrame],
-                   tlt_df:  Optional[pd.DataFrame], overwrite: bool, etf_cache_dir: Path) -> dict:
+                   tlt_df:  Optional[pd.DataFrame], overwrite: bool, incremental: bool, etf_cache_dir: Path) -> dict:
     
     feat_path = features_dir / f"{ticker}_features.parquet"
     if not feat_path.exists():
@@ -412,7 +414,147 @@ def process_ticker(ticker: str, features_dir: Path, cache_dir: Path,
         feat_path = candidates[0]
     
     out_path = feat_path.with_name(feat_path.stem + "_enhanced.parquet")
-    if out_path.exists() and not overwrite:
+    
+    # Incremental mode: enhance only new rows
+    if incremental and out_path.exists():
+        try:
+            existing_enhanced = pd.read_parquet(out_path)
+            existing_enhanced = normalize_df_index(existing_enhanced)
+            last_enhanced_date = existing_enhanced.index.max()
+            
+            # Load base features
+            df = pd.read_parquet(feat_path)
+            df = normalize_df_index(df)
+            
+            # Filter to only NEW dates
+            df_new = df[df.index > last_enhanced_date]
+            
+            if len(df_new) == 0:
+                return {"ticker": ticker, "status": "skip", "reason": "up-to-date"}
+            
+            # Need window for cross-sectional features (126 days)
+            window_start = last_enhanced_date - pd.Timedelta(days=180)
+            df_window = df[df.index >= window_start]
+            
+            if len(df_window) < 50:
+                return {"ticker": ticker, "status": "skip", "reason": "insufficient_window"}
+            
+            # Defensive check: Ensure 'Adj Close' exists
+            if 'Adj Close' not in df_window.columns:
+                return {"ticker": ticker, "status": "error", "error": f"Missing 'Adj Close' column"}
+            
+            initial_cols = len(df_window.columns)
+            
+            # Apply all enhancements to window
+            df_window = add_market_relative_features(df_window, spy_df)
+            
+            # Sector-relative
+            if ticker in sector_map:
+                sector_etf = sector_map[ticker]
+                etf_cache_dir_path = Path(cache_dir).parent / '_etf_cache'
+                sector_fp = find_cache_for_ticker(sector_etf, str(etf_cache_dir_path))
+                if sector_fp and sector_fp.exists():
+                    sector_df = pd.read_parquet(sector_fp)
+                    sector_df = normalize_df_index(sector_df)
+                    df_window = add_sector_relative_features(df_window, sector_df, sector_etf)
+            
+            # VIX regime
+            if vix_df is not None:
+                df_window = add_vix_regime_features(df_window, vix_df)
+            
+            # Crypto
+            if crypto_df is not None:
+                df_window = add_crypto_features(df_window, crypto_df)
+            
+            # Rates
+            if tlt_df is not None:
+                df_window = add_rates_beta(df_window, tlt_df)
+            
+            # Derived features
+            df_window = add_volatility_interactions(df_window)
+            df_window = add_momentum_quality_features(df_window)
+            df_window = add_technical_pattern_features(df_window)
+            df_window = add_acceleration_features(df_window)
+            df_window = add_regime_adaptive_features(df_window)
+            df_window = add_liquidity_quality_features(df_window)
+            df_window = add_theme_acceleration(df_window)
+            
+            # Downcast to save space
+            float_cols = df_window.select_dtypes(include=["float64"]).columns
+            df_window[float_cols] = df_window[float_cols].astype("float32")
+            
+            # Elite features (same as non-incremental)
+            vol_cols = []
+            if 'feat_idio_vol_63' in df_window.columns:
+                vol_cols.append(df_window['feat_idio_vol_63'])
+            elif 'idio_vol_63' in df_window.columns:
+                vol_cols.append(df_window['idio_vol_63'])
+            
+            if 'feat_parkinson_20' in df_window.columns:
+                vol_cols.append(df_window['feat_parkinson_20'])
+            elif 'parkinson_20' in df_window.columns:
+                vol_cols.append(df_window['parkinson_20'])
+            elif 'volatility_20' in df_window.columns:
+                vol_cols.append(df_window['volatility_20'])
+            
+            if len(vol_cols) >= 1:
+                df_window['feat_low_vol_raw'] = pd.concat(vol_cols, axis=1).mean(axis=1)
+            else:
+                df_window['feat_low_vol_raw'] = 0.1
+            
+            df_window['feat_earnings_quality'] = 0.0
+            
+            # Uptrend filter
+            ema50 = None
+            ema200 = None
+            
+            for col in ['feat_ema_50', 'ema_50', 'sma_50']:
+                if col in df_window.columns:
+                    ema50 = df_window[col]
+                    break
+            
+            for col in ['feat_ema_200', 'ema_200', 'sma_200']:
+                if col in df_window.columns:
+                    ema200 = df_window[col]
+                    break
+            
+            if ema50 is None or ema200 is None:
+                if 'Close' in df_window.columns:
+                    if ema50 is None:
+                        ema50 = df_window['Close'].ewm(span=50, adjust=False).mean()
+                    if ema200 is None:
+                        ema200 = df_window['Close'].ewm(span=200, adjust=False).mean()
+            
+            if ema50 is not None and ema200 is not None:
+                df_window['feat_in_uptrend'] = (ema50 > ema200).astype(float)
+            else:
+                df_window['feat_in_uptrend'] = 0.5
+            
+            df_window['feat_composite_quality'] = 0.5
+            
+            # Extract only NEW rows
+            df_enhanced_new = df_window[df_window.index > last_enhanced_date]
+            
+            if len(df_enhanced_new) == 0:
+                return {"ticker": ticker, "status": "skip", "reason": "no-new-enhanced"}
+            
+            # Append to existing
+            df_combined = pd.concat([existing_enhanced, df_enhanced_new]).sort_index()
+            df_combined = df_combined[~df_combined.index.duplicated(keep='last')]
+            
+            # Save
+            df_combined.to_parquet(out_path, compression="zstd")
+            
+            added_cols = len(df_combined.columns) - initial_cols
+            return {"ticker": ticker, "status": "success", "rows": len(df_combined), 
+                   "rows_added": len(df_enhanced_new), "added_features": added_cols}
+            
+        except Exception as e:
+            logging.error(f"{ticker} incremental failed: {e}, falling back")
+            # Fall through to normal processing
+    
+    # Normal mode or fallback
+    if out_path.exists() and not overwrite and not incremental:
         return {"ticker": ticker, "status": "skip", "reason": "exists"}
     
     try:
@@ -609,7 +751,7 @@ def main():
     with ProcessPoolExecutor(max_workers=args.processes) as executor:
         futures = {
             executor.submit(process_ticker, ticker, features_dir, cache_dir,
-                          sector_map, spy_df, vix_df, crypto_df, tlt_df, args.overwrite, etf_cache_dir): ticker
+                          sector_map, spy_df, vix_df, crypto_df, tlt_df, args.overwrite, args.incremental, etf_cache_dir): ticker
             for ticker in tickers
         }
         
@@ -621,7 +763,10 @@ def main():
             status = result["status"]
             
             if status == "success":
-                print(f"[{i}/{len(tickers)}] ✓ {ticker}: +{result['added_features']} features")
+                if 'rows_added' in result:
+                    print(f"[{i}/{len(tickers)}] ✓ {ticker}: +{result['rows_added']} rows (total: {result['rows']}, +{result['added_features']} features)")
+                else:
+                    print(f"[{i}/{len(tickers)}] ✓ {ticker}: +{result['added_features']} features")
             elif status == "skip":
                 print(f"[{i}/{len(tickers)}] ⊘ {ticker}: {result.get('reason', 'skipped')}")
             else:
@@ -631,9 +776,12 @@ def main():
     success = sum(1 for r in results if r["status"] == "success")
     skipped = sum(1 for r in results if r["status"] == "skip")
     errors = sum(1 for r in results if r["status"] == "error")
+    total_added = sum(r.get('rows_added', 0) for r in results if r["status"] == "success")
     
     print(f"\n{'='*60}")
     print(f"Success: {success} | Skipped: {skipped} | Errors: {errors}")
+    if args.incremental and total_added > 0:
+        print(f"Incremental: {total_added} total rows added")
     print(f"{'='*60}")
 
 if __name__ == "__main__":
