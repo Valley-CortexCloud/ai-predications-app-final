@@ -44,12 +44,23 @@ jobs:
       - name: Update ticker universe
         run: |
           python scripts/fetch_ticker_universe.py
-          python scripts/build_sector_map.py
+          python3 scripts/build_sector_map.py \
+            --out config/sector_map.csv \
+            --symbols-file config/ticker_universe.csv \
+            --cache-requests \
+            --with-heuristics
 
       - name: Update earnings calendar
         run: |
-          python scripts/update_earnings_incremental.py
-
+          echo "📊 Updating earnings calendar..."
+          python3 scripts/update_earnings_incremental.py \
+            --existing data/earnings.csv \
+            --output data/earnings.csv \
+            --symbols-file config/ticker_universe.csv \
+            --lookback-days ${{ steps.earnings_lookback.outputs.days }} \
+            --provider-order yahoo,finnhub,fmp,alphavantage \
+            --verbose
+            
       - name: Fetch ticker data (incremental)
         run: |
           # Fetch S&P 500 and NASDAQ (incremental mode)
