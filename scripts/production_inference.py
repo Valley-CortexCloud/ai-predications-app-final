@@ -116,7 +116,7 @@ def production_inference(snapshot_dir: Path, output_dir: Path, model_dir: Path) 
     
     build_labels_cmd = (
         f"python3 scripts/build_labels_final.py "
-        f"--input {today_features_path} "
+        f"--cache-dir data_cache/10y_ticker_features "
         f"--output {today_features_temp} "
         f"--earnings-file {EARNINGS_FILE} "
         f"--production-only"
