@@ -210,7 +210,8 @@ def get_latest_date_from_cache(cache_dir: str) -> pd.Timestamp:
             df = pd.read_parquet(fp)
             if len(df) > 0:
                 latest_dates.append(pd.to_datetime(df.index.max()))
-        except Exception:
+        except Exception as e:
+            logging.debug(f"Could not read {fp.name} for latest date detection: {e}")
             continue
     
     if not latest_dates:
