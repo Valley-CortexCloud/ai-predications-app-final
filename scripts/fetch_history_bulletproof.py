@@ -311,15 +311,74 @@ def fetch_and_save(
     end: Optional[str],
     adjusted: bool,
     overwrite: bool,
+    incremental: bool,
     max_retries: int,
     backoff_base: float,
 ) -> Tuple[str, str]:
     """
-    Returns (ticker, status) where status in {"ok","skip","empty","error:<msg>"}.
+    Returns (ticker, status) where status in {"ok","skip","empty","error:<msg>","ok:appended_N_rows"}.
     """
     tag = "adj" if adjusted else "raw"
     out_path = out_dir / f"{ticker}_{period}_{tag}.parquet"
-    if out_path.exists() and not overwrite:
+    
+    # Incremental mode: append only new data
+    if incremental and out_path.exists():
+        try:
+            existing_df = pd.read_parquet(out_path)
+            existing_df = _safe_set_date_index(existing_df)
+            
+            if len(existing_df) == 0:
+                # Empty file, treat as new fetch
+                pass
+            else:
+                last_date = existing_df.index.max()
+                
+                # Fetch only new data (last_date + 1 day to today)
+                start_date = (last_date + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+                end_date = pd.Timestamp.now().strftime("%Y-%m-%d")
+                
+                if start_date >= end_date:
+                    return (ticker, "skip:up-to-date")
+                
+                # Fetch new data with retries
+                df_new = None
+                wait = backoff_base
+                last_err = None
+                for attempt in range(max_retries):
+                    try:
+                        df_new = fetch_yf_aligned(ticker, start=start_date, end=end_date, 
+                                                 period=None, adjusted=adjusted)
+                        break
+                    except Exception as e:
+                        last_err = str(e)
+                        if attempt < max_retries - 1:  # Don't sleep on last attempt
+                            time.sleep(wait)
+                            wait = min(wait * 2.0, 30.0)
+                
+                if df_new is None or df_new.empty:
+                    return (ticker, "skip:no-new-data")
+                
+                # Append and deduplicate
+                df_combined = pd.concat([existing_df, df_new]).sort_index()
+                df_combined = df_combined[~df_combined.index.duplicated(keep='last')]
+                
+                # Validation: check for gaps > 5 trading days
+                date_diffs = df_combined.index.to_series().diff()
+                max_gap = date_diffs.max().days if len(date_diffs) > 1 else 0
+                if max_gap > 7:  # Allow some flexibility for holidays
+                    print(f"Warning: {ticker} has gap of {max_gap} days")
+                
+                # Save combined data
+                out_dir.mkdir(parents=True, exist_ok=True)
+                df_combined.to_parquet(out_path)
+                return (ticker, f"ok:appended_{len(df_new)}_rows")
+                
+        except Exception as e:
+            print(f"Warning: {ticker} incremental failed: {e}, falling back to full fetch")
+            # Fall through to normal fetch
+    
+    # Normal mode or fallback
+    if out_path.exists() and not overwrite and not incremental:
         return (ticker, "skip")
 
     wait = backoff_base
@@ -385,8 +444,9 @@ def fetch_and_save(
             return (ticker, "ok")
         except Exception as e:
             last_err = str(e)
-            time.sleep(wait)
-            wait = min(wait * 2.0, 30.0)
+            if attempt < max_retries - 1:  # Don't sleep on last attempt
+                time.sleep(wait)
+                wait = min(wait * 2.0, 30.0)
 
     return (ticker, f"error:{last_err or 'unknown'}")
 
@@ -410,6 +470,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # IO/exec
     p.add_argument("--out-dir", default=str(CACHE_DIR_DEFAULT), help="Output directory (default: data_cache)")
     p.add_argument("--overwrite", action="store_true", help="Overwrite existing files")
+    p.add_argument("--incremental", action="store_true", help="Append new data to existing files (only fetch since last date)")
     p.add_argument("--max-workers", type=int, default=8, help="Parallel workers (threads)")
     p.add_argument("--max-retries", type=int, default=5, help="Max retries per ticker")
     p.add_argument("--backoff-base", type=float, default=1.0, help="Initial backoff seconds")
@@ -453,6 +514,7 @@ def main():
                 args.end,
                 args.adjusted,
                 args.overwrite,
+                args.incremental,
                 args.max_retries,
                 args.backoff_base,
             )
@@ -460,24 +522,31 @@ def main():
         for i, fut in enumerate(concurrent.futures.as_completed(futs), 1):
             ticker, status = fut.result()
             statuses.append((ticker, status))
-            if status == "ok":
-                print(f"[{i}/{len(futs)}] ✓ {ticker}")
-            elif status == "skip":
-                print(f"[{i}/{len(futs)}] · {ticker} (skip)")
+            if status == "ok" or status.startswith("ok:"):
+                print(f"[{i}/{len(futs)}] ✓ {ticker}" + (f" ({status.split(':')[1]})" if ":" in status else ""))
+            elif status == "skip" or status.startswith("skip:"):
+                reason = status.split(":", 1)[1] if ":" in status else ""
+                print(f"[{i}/{len(futs)}] · {ticker} (skip{': ' + reason if reason else ''})")
             elif status == "empty":
                 print(f"[{i}/{len(futs)}] ◦ {ticker} (empty)")
             else:
                 print(f"[{i}/{len(futs)}] × {ticker} ({status})")
 
     elapsed = time.time() - start_time
-    ok = sum(1 for _, s in statuses if s == "ok")
-    skip = sum(1 for _, s in statuses if s == "skip")
+    ok = sum(1 for _, s in statuses if s == "ok" or s.startswith("ok:"))
+    skip = sum(1 for _, s in statuses if s == "skip" or s.startswith("skip:"))
     empty = sum(1 for _, s in statuses if s == "empty")
     err = [f"{t}:{s}" for t, s in statuses if s.startswith("error:")]
+    
+    # Count appended rows for incremental mode
+    appended = [s for _, s in statuses if s.startswith("ok:appended_")]
+    total_appended = sum(int(s.split("_")[1]) for s in appended) if appended else 0
 
     print("\n" + "=" * 60)
     print(f"Done in {elapsed:.1f}s")
     print(f"OK: {ok} | Skipped: {skip} | Empty: {empty} | Errors: {len(err)}")
+    if args.incremental and total_appended > 0:
+        print(f"Incremental: {total_appended} total rows appended across {len(appended)} tickers")
     if err:
         print("Errors (first 10):")
         for e in err[:10]:

@@ -59,13 +59,14 @@ def _normalize_daily_index(df: pd.DataFrame | None) -> pd.DataFrame | None:
     return df
 
 
-def process_ticker_file(file_path: Path, overwrite: bool = False, 
+def process_ticker_file(file_path: Path, overwrite: bool = False, incremental: bool = False,
                         spy_df: pd.DataFrame = None, verbose: bool = True) -> dict:
     """Process a single ticker cache file and augment with features.
     
     Args:
         file_path: Path to ticker cache file
         overwrite: Whether to overwrite existing features file
+        incremental: Only compute features for new rows (append mode)
         spy_df: SPY DataFrame for market-relative features
         verbose: Print progress messages
         
@@ -75,8 +76,113 @@ def process_ticker_file(file_path: Path, overwrite: bool = False,
     ticker = file_path.stem.split('_')[0]  # Extract ticker from filename
     out_file = file_path.with_name(file_path.stem + '_features.parquet')
     
-    # Check if already exists
-    if out_file.exists() and not overwrite:
+    # Incremental mode: append only new features
+    if incremental and out_file.exists():
+        try:
+            existing_features = pd.read_parquet(out_file)
+            # Normalize existing features index
+            if 'Date' in existing_features.columns and not isinstance(existing_features.index, pd.DatetimeIndex):
+                existing_features['Date'] = pd.to_datetime(existing_features['Date'], errors='coerce')
+                existing_features = existing_features.dropna(subset=['Date']).set_index('Date')
+            if not isinstance(existing_features.index, pd.DatetimeIndex):
+                existing_features.index = pd.to_datetime(existing_features.index, errors='coerce')
+            existing_features = _normalize_daily_index(existing_features)
+            
+            last_feature_date = existing_features.index.max()
+            
+            # Load raw data
+            df = pd.read_parquet(file_path)
+            df = _normalize_daily_index(df)
+            
+            # Filter to only NEW dates
+            df_new = df[df.index > last_feature_date]
+            
+            if len(df_new) == 0:
+                if verbose:
+                    print(f"  ⊘ {ticker}: up-to-date (last: {last_feature_date.date()})")
+                return {'ticker': ticker, 'status': 'skipped', 'reason': 'up-to-date'}
+            
+            # Need lookback window for features (252 days ~ 1 year of trading days)
+            window_start = last_feature_date - pd.Timedelta(days=365)
+            df_window = df[df.index >= window_start]
+            
+            if len(df_window) < 50:
+                if verbose:
+                    print(f"  ⚠️  {ticker}: insufficient window data ({len(df_window)} rows)")
+                return {'ticker': ticker, 'status': 'skipped', 'reason': 'insufficient_window'}
+            
+            # Get sector for this ticker
+            sector = get_ticker_sector(ticker, max_retries=2)
+            sector_df = None
+            
+            if sector:
+                etf_symbol = get_sector_etf_symbol(sector)
+                sector_df = fetch_sector_etf_history(etf_symbol, period='2y', max_retries=2)
+                sector_df = _normalize_daily_index(sector_df)
+            
+            # Normalize SPY
+            spy_df_local = _normalize_daily_index(spy_df.copy()) if spy_df is not None else None
+            
+            # Compute features on window (includes old + new)
+            features_window = compute_all_features(df_window, market_df=spy_df_local, sector_df=sector_df)
+            
+            # Extract only NEW feature rows
+            features_new = features_window[features_window.index > last_feature_date]
+            
+            if len(features_new) == 0:
+                if verbose:
+                    print(f"  ⊘ {ticker}: no new features computed")
+                return {'ticker': ticker, 'status': 'skipped', 'reason': 'no-new-features'}
+            
+            # Get raw data for new dates to join OHLCV
+            df_new_for_join = df[df.index.isin(features_new.index)]
+            df_new_reset = df_new_for_join.reset_index()
+            features_new_reset = features_new.reset_index(drop=True)
+            
+            # Combine OHLCV + features
+            out_df_new = pd.concat([df_new_reset, features_new_reset], axis=1)
+            out_df_new = out_df_new.loc[:, ~out_df_new.columns.duplicated()]
+            
+            # Append to existing
+            features_combined = pd.concat([existing_features, out_df_new]).sort_index()
+            features_combined = features_combined[~features_combined.index.duplicated(keep='last')]
+            
+            # Downcast to float32
+            float_cols = features_combined.select_dtypes(include=['float64']).columns
+            features_combined[float_cols] = features_combined[float_cols].astype('float32')
+            
+            # Defensive check: Ensure OHLCV columns exist
+            missing_cols = [col for col in REQUIRED_OHLCV_COLUMNS if col not in features_combined.columns]
+            if missing_cols:
+                if verbose:
+                    print(f"  ⚠️  {ticker}: Missing OHLCV columns: {missing_cols}")
+                return {
+                    'ticker': ticker,
+                    'status': 'error',
+                    'error': f"Missing required columns: {missing_cols}"
+                }
+            
+            # Write combined data
+            features_combined.to_parquet(out_file, compression='zstd')
+            
+            if verbose:
+                print(f"  ✓ {ticker}: appended {len(features_new)} rows (total: {len(features_combined)})")
+            
+            return {
+                'ticker': ticker,
+                'status': 'success',
+                'rows': len(features_combined),
+                'rows_added': len(features_new),
+                'features': len(features_new.columns) if hasattr(features_new, 'columns') else 0
+            }
+            
+        except Exception as e:
+            if verbose:
+                print(f"  ⚠️  {ticker}: incremental failed ({e}), falling back to full")
+            # Fall through to normal processing
+    
+    # Check if already exists (non-incremental)
+    if out_file.exists() and not overwrite and not incremental:
         if verbose:
             print(f"  Skipping {ticker}: features file exists (use --overwrite to replace)")
         return {'ticker': ticker, 'status': 'skipped', 'reason': 'exists'}
@@ -167,6 +273,8 @@ def main():
                        help='Number of parallel processes (default: CPU count)')
     parser.add_argument('--overwrite', action='store_true',
                        help='Overwrite existing feature files')
+    parser.add_argument('--incremental', action='store_true',
+                       help='Only compute features for new rows (append mode)')
     parser.add_argument('--limit', type=int, default=0,
                        help='Limit number of files to process (0 = all)')
     parser.add_argument('--tickers', type=str, default=None,
@@ -229,11 +337,13 @@ def main():
         for i, file_path in enumerate(all_files, 1):
             print(f"\n[{i}/{len(all_files)}] Processing {file_path.stem}...")
             result = process_ticker_file(file_path, overwrite=args.overwrite, 
+                                        incremental=args.incremental,
                                         spy_df=spy_df, verbose=True)
             results.append(result)
     else:
         # Multi-process
         process_func = partial(process_ticker_file, overwrite=args.overwrite,
+                              incremental=args.incremental,
                               spy_df=spy_df, verbose=False)
         
         with Pool(processes=n_processes) as pool:
@@ -244,7 +354,10 @@ def main():
                 status = result['status']
                 
                 if status == 'success':
-                    print(f"[{i}/{len(all_files)}] ✓ {ticker}: {result['rows']} rows, {result['features']} features")
+                    if 'rows_added' in result:
+                        print(f"[{i}/{len(all_files)}] ✓ {ticker}: +{result['rows_added']} rows (total: {result['rows']}, {result['features']} features)")
+                    else:
+                        print(f"[{i}/{len(all_files)}] ✓ {ticker}: {result['rows']} rows, {result['features']} features")
                 elif status == 'skipped':
                     print(f"[{i}/{len(all_files)}] ⊘ {ticker}: {result.get('reason', 'skipped')}")
                 else:
@@ -257,12 +370,17 @@ def main():
     skipped_count = sum(1 for r in results if r['status'] == 'skipped')
     error_count = sum(1 for r in results if r['status'] == 'error')
     
+    # Incremental stats
+    total_added = sum(r.get('rows_added', 0) for r in results if r['status'] == 'success')
+    
     print(f"\n{'='*60}")
     print(f"Summary:")
     print(f"  Total files: {len(all_files)}")
     print(f"  Success: {success_count}")
     print(f"  Skipped: {skipped_count}")
     print(f"  Errors: {error_count}")
+    if args.incremental and total_added > 0:
+        print(f"  Incremental: {total_added} total rows added")
     print(f"  Time: {elapsed:.1f}s ({elapsed/len(all_files):.2f}s per ticker)")
     print(f"{'='*60}")
     

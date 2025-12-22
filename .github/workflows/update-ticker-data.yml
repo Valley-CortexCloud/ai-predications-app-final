@@ -1,0 +1,132 @@
+name: Weekly Data Update
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # Sunday 3 AM UTC
+  workflow_dispatch:
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Need write to commit data files
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Update ticker universe
+        run: |
+          python scripts/fetch_ticker_universe.py
+          python scripts/build_sector_map.py
+
+      - name: Update earnings calendar
+        run: |
+          python scripts/update_earnings_incremental.py
+
+      - name: Fetch ticker data (incremental)
+        run: |
+          # Fetch S&P 500 and NASDAQ (incremental mode)
+          python scripts/fetch_history_bulletproof.py \
+            --universe sp500 \
+            --period 2y \
+            --adjusted \
+            --out-dir data_cache/10y_ticker_features \
+            --max-workers 4 \
+            --incremental
+          
+          python scripts/fetch_history_bulletproof.py \
+            --universe nasdaq \
+            --period 2y \
+            --adjusted \
+            --out-dir data_cache/10y_ticker_features \
+            --max-workers 4 \
+            --incremental
+          
+          # Fetch benchmark ETFs (incremental mode)
+          python scripts/fetch_history_bulletproof.py \
+            --tickers "SPY,^VIX,TLT,BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" \
+            --period 2y \
+            --out-dir data_cache/_etf_cache \
+            --max-workers 2 \
+            --incremental
+
+      - name: Augment features (incremental)
+        run: |
+          python scripts/augment_caches_fast.py \
+            --processes 4 \
+            --cache-dir data_cache/10y_ticker_features \
+            --incremental
+
+      - name: Enhance features (incremental)
+        run: |
+          python scripts/enhance_features_final.py \
+            --processes 4 \
+            --cache-dir data_cache/10y_ticker_features \
+            --sector-map config/sector_map.csv \
+            --incremental
+
+      - name: Create snapshot
+        run: |
+          python scripts/create_snapshot.py \
+            --features-dir data_cache/10y_ticker_features \
+            --output-dir data/snapshots
+
+      - name: Validate snapshot
+        run: |
+          python scripts/validate_snapshot.py \
+            --snapshots-root data/snapshots \
+            --max-age-days 7
+
+      - name: Commit data files
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # Add all data files
+          git add config/ticker_universe.csv
+          git add config/sector_map.csv
+          git add data/earnings.csv
+          git add data_cache/
+          git add data/snapshots/
+          
+          # Check if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Weekly data update: $(date +'%Y-%m-%d')"
+            git push
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "==================================="
+          echo "Weekly Data Update Summary"
+          echo "==================================="
+          echo "Date: $(date)"
+          
+          # Show snapshot info
+          if [ -d "data/snapshots" ]; then
+            echo ""
+            echo "Latest snapshot:"
+            ls -lt data/snapshots | head -5
+          fi
+          
+          # Show data cache size
+          if [ -d "data_cache" ]; then
+            echo ""
+            echo "Data cache size:"
+            du -sh data_cache
+          fi
+          
+          echo "==================================="
