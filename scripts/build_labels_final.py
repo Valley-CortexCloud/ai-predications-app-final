@@ -185,6 +185,43 @@ def load_parquet_indexed(fp: Path) -> pd.DataFrame:
     df = pd.read_parquet(fp)
     return normalize_df_index_to_ny(df)
 
+def get_latest_date_from_cache(cache_dir: str) -> pd.Timestamp:
+    """Get the actual latest date available in cache files (not from training data)"""
+    cache_path = Path(cache_dir)
+    
+    # Sample enhanced feature files
+    feature_files = list(cache_path.glob("*_features_enhanced.parquet"))
+    
+    if not feature_files:
+        # Fallback to regular feature files
+        feature_files = list(cache_path.glob("*_features.parquet"))
+        feature_files = [f for f in feature_files if "_enhanced" not in f.name]
+    
+    if not feature_files:
+        raise ValueError(f"No feature files found in {cache_dir}")
+    
+    # Check multiple files to get consensus on latest date
+    latest_dates = []
+    sample_count = min(SAMPLE_TICKER_COUNT, len(feature_files))
+    
+    for fp in feature_files[:sample_count]:
+        try:
+            df = pd.read_parquet(fp)
+            if len(df) > 0:
+                latest_dates.append(pd.to_datetime(df.index.max()))
+        except Exception:
+            continue
+    
+    if not latest_dates:
+        raise ValueError("Could not determine latest date from cache files")
+    
+    # Return the most common latest date (consensus)
+    from collections import Counter
+    date_counts = Counter([d.normalize() for d in latest_dates])
+    actual_latest = date_counts.most_common(1)[0][0]
+    
+    return actual_latest
+
 # ---------------- Returns ----------------
 
 def forward_return(s: pd.Series, H: int) -> pd.Series:
@@ -669,17 +706,137 @@ def main():
     # Deduplicate by (date, symbol)
     df_all = df_all.sort_values(["date", "symbol"]).drop_duplicates(["date", "symbol"], keep="last")
     
-    # Production mode: Filter to latest date ONLY (after all features computed)
+    # Production mode: Reload from cache to get ACTUAL latest date
     if args.production_only:
-        latest_date = df_all['date'].max()
-        original_rows = len(df_all)
-        n_symbols = df_all['symbol'].nunique()
-        df_all = df_all[df_all['date'] == latest_date].copy()
+        print("\n🚀 PRODUCTION MODE: Reloading features from actual latest date")
         
-        logging.info(f"🎯 PRODUCTION MODE: Filtered to latest date only")
-        logging.info(f"   {original_rows} rows → {len(df_all)} rows")
-        logging.info(f"   Latest date: {latest_date}")
-        logging.info(f"   Symbols: {df_all['symbol'].nunique()}/{n_symbols}")
+        # Get actual latest date from cache files
+        actual_latest_date = get_latest_date_from_cache(args.cache_dir)
+        training_latest_date = df_all['date'].max()
+        days_diff = (actual_latest_date - training_latest_date).days
+        
+        print(f"   Training latest date (with 63d forward): {training_latest_date}")
+        print(f"   Actual latest date (from cache): {actual_latest_date}")
+        print(f"   Difference: {days_diff} days")
+        
+        if days_diff > MAX_STALE_DAYS:
+            print(f"\n   ⚠️  WARNING: {days_diff} days of fresh data available!")
+            print(f"   Re-processing all tickers for date: {actual_latest_date}")
+            
+            # Reload all tickers for the actual latest date
+            production_rows = []
+            tickers = df_all['symbol'].unique()
+            
+            for ticker in tickers:
+                try:
+                    # Find enhanced features file
+                    ticker_upper = ticker.upper()
+                    feat_fp = Path(args.cache_dir) / f"{ticker_upper}_2y_raw_features_enhanced.parquet"
+                    
+                    if not feat_fp.exists():
+                        # Fallback: glob for any enhanced file
+                        candidates = list(Path(args.cache_dir).glob(f"{ticker_upper}_*_features_enhanced.parquet"))
+                        if candidates:
+                            feat_fp = sorted(candidates)[0]
+                        else:
+                            continue
+                    
+                    # Load ticker features
+                    ticker_df = pd.read_parquet(feat_fp)
+                    ticker_df.index = normalize_index_to_ny_dates(ticker_df.index)
+                    
+                    # Get ONLY the latest date row
+                    latest_row = ticker_df[ticker_df.index == actual_latest_date]
+                    
+                    if len(latest_row) > 0:
+                        latest_row = latest_row.copy()
+                        latest_row['symbol'] = ticker
+                        latest_row = latest_row.reset_index()
+                        
+                        # Rename the index column to 'date' (could be 'Date' or 'index')
+                        if 'Date' in latest_row.columns:
+                            latest_row.rename(columns={'Date': 'date'}, inplace=True)
+                        elif 'index' in latest_row.columns:
+                            latest_row.rename(columns={'index': 'date'}, inplace=True)
+                        
+                        latest_row['date'] = pd.to_datetime(latest_row['date']).dt.normalize()
+                        
+                        # Select only numeric columns (features) and exclude OHLCV
+                        num_cols = [c for c in latest_row.columns 
+                                   if pd.api.types.is_numeric_dtype(latest_row[c]) and c not in EXCLUDE_COLUMNS]
+                        
+                        # Keep symbol, date and numeric features
+                        keep_cols = ['symbol', 'date'] + num_cols
+                        latest_row = latest_row[keep_cols]
+                        
+                        # Ensure feat_ prefix on all features
+                        for col in num_cols:
+                            if not col.startswith('feat_'):
+                                latest_row.rename(columns={col: f'feat_{col}'}, inplace=True)
+                        
+                        # Remove duplicate columns (keep last)
+                        latest_row = latest_row.loc[:, ~latest_row.columns.duplicated(keep='last')]
+                        
+                        production_rows.append(latest_row)
+                        
+                except Exception as e:
+                    logging.warning(f"Could not load production data for {ticker}: {e}")
+                    continue
+            
+            if not production_rows:
+                raise RuntimeError("No production data loaded - check cache files!")
+            
+            df_production = pd.concat(production_rows, ignore_index=True)
+            
+            print(f"\n   ✓ Loaded {len(df_production)} tickers for production date {actual_latest_date}")
+            
+            # Re-compute cross-sectional features for this date
+            logging.info("Computing cross-sectional rank features...")
+            df_production = add_cross_sectional_ranks(df_production)
+            n_rank = len([c for c in df_production.columns if c.startswith('feat_rank_')])
+            logging.info(f"Added {n_rank} cross-sectional rank features")
+            
+            logging.info("Computing cross-sectional z-score features...")
+            df_production = add_cross_sectional_z_scores(df_production)
+            n_zscore = len([c for c in df_production.columns if c.startswith('feat_zscore_')])
+            logging.info(f"Added {n_zscore} z-score features")
+            
+            logging.info("🔧 Re-computing composite quality for production date...")
+            
+            # Recompute composite quality components for this single date
+            quality_parts = []
+            
+            if 'feat_low_vol_raw' in df_production.columns:
+                vol_max = df_production['feat_low_vol_raw'].max()
+                vol_score = 1.0 - (df_production['feat_low_vol_raw'] / vol_max) if vol_max > 0 else 0.5
+                quality_parts.append(vol_score.fillna(0.5))
+            
+            if 'feat_in_uptrend' in df_production.columns:
+                quality_parts.append(df_production['feat_in_uptrend'])
+            
+            if 'feat_earnings_quality' in df_production.columns:
+                earn_score = ((df_production['feat_earnings_quality'] + 500) / 2000).clip(0, 1)
+                quality_parts.append(earn_score.fillna(0.5))
+            
+            if quality_parts:
+                df_production['feat_composite_quality'] = pd.concat(quality_parts, axis=1).mean(axis=1)
+            else:
+                df_production['feat_composite_quality'] = 0.5
+            
+            logging.info(f"✅ Composite quality: [{df_production['feat_composite_quality'].min():.3f}, {df_production['feat_composite_quality'].max():.3f}], mean={df_production['feat_composite_quality'].mean():.3f}")
+            
+            # Replace df_all with fresh production data
+            df_all = df_production
+            
+            print(f"   Final production dataset: {len(df_all)} rows for {df_all['symbol'].nunique()} symbols")
+        else:
+            # Data is already fresh enough, just filter to latest
+            df_all = df_all[df_all['date'] == training_latest_date].copy()
+        
+        print(f"\n🎯 PRODUCTION MODE: Filtered to latest date only")
+        print(f"   {len(df_all)} rows")
+        print(f"   Latest date: {df_all['date'].max()}")
+        print(f"   Symbols: {df_all['symbol'].nunique()}")
     
     # ===== ENHANCED FEATURE DEBUGGING =====
     print("\n" + "=" * 60)
