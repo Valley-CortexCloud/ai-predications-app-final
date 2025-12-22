@@ -68,7 +68,7 @@ def main():
     # Load symbols
     symbols = load_symbols(args.symbols_file)
     random.shuffle(symbols)
-    print(f"✓ Loaded {len(symbols)} symbols from {args.ticker_universe} (randomized order)")
+    print(f"✓ Loaded {len(symbols)} symbols from {args.symbols_file} (randomized order)")
 
     if args.max_symbols > 0:
         symbols = symbols[:args. max_symbols]
