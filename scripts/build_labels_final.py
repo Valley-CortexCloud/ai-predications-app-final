@@ -14,6 +14,7 @@ v3.1 (FIXED):
 import argparse
 from pathlib import Path
 from typing import List, Optional, Dict
+from collections import Counter
 import numpy as np
 import pandas as pd
 import sys
@@ -216,7 +217,6 @@ def get_latest_date_from_cache(cache_dir: str) -> pd.Timestamp:
         raise ValueError("Could not determine latest date from cache files")
     
     # Return the most common latest date (consensus)
-    from collections import Counter
     date_counts = Counter([d.normalize() for d in latest_dates])
     actual_latest = date_counts.most_common(1)[0][0]
     
@@ -770,9 +770,9 @@ def main():
                         latest_row = latest_row[keep_cols]
                         
                         # Ensure feat_ prefix on all features
-                        for col in num_cols:
-                            if not col.startswith('feat_'):
-                                latest_row.rename(columns={col: f'feat_{col}'}, inplace=True)
+                        rename_map = {col: f'feat_{col}' for col in num_cols if not col.startswith('feat_')}
+                        if rename_map:
+                            latest_row.rename(columns=rename_map, inplace=True)
                         
                         # Remove duplicate columns (keep last)
                         latest_row = latest_row.loc[:, ~latest_row.columns.duplicated(keep='last')]
