@@ -8,6 +8,8 @@ on:
 jobs:
   fast-predictions:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Need write to commit predictions
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -96,6 +98,8 @@ jobs:
   llm-supercharge:
     needs: fast-predictions
     runs-on: ubuntu-latest
+    permissions:
+      contents: read  # Only needs read access
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
