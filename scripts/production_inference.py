@@ -141,6 +141,47 @@ def production_inference(snapshot_dir: Path, output_dir: Path, model_dir: Path) 
     
     run_command(apply_ranker_cmd, "Step 3: Applying ranker")
     
+    # Step 3b: Validate features in the output
+    print(f"\n{'='*60}")
+    print("Step 3b: Validating features")
+    print(f"{'='*60}")
+    
+    # Load the features file that was just created
+    features_df = pd.read_parquet(today_features_path)
+    
+    # Check for critical cross-sectional features
+    required_cross_sectional = [
+        'feat_volatility_20_rank_pct',
+        'feat_mom_12m_skip1m_rank_pct',
+        'feat_rsi_rank_pct',
+        'feat_volatility_20_zscore_xsec',
+        'feat_mom_12m_skip1m_zscore_xsec',
+        'feat_composite_quality',
+        'feat_earnings_quality'
+    ]
+    
+    missing = [f for f in required_cross_sectional if f not in features_df.columns]
+    
+    if missing:
+        print(f"❌ CRITICAL: Missing {len(missing)} cross-sectional features:")
+        for feat in missing:
+            print(f"   - {feat}")
+        print("\nThis indicates cross-sectional features were not computed properly.")
+        print("Cross-sectional features require multiple dates to compute percentile ranks and z-scores.")
+        sys.exit(1)
+    else:
+        print(f"✅ All required cross-sectional features present ({len(required_cross_sectional)} features)")
+    
+    # Feature count check
+    feature_cols = [c for c in features_df.columns if c.startswith('feat_')]
+    if len(feature_cols) < 110:
+        print(f"⚠️  WARNING: Only {len(feature_cols)} features (expected 110+)")
+        print(f"   This may indicate missing features.")
+    else:
+        print(f"✅ Feature count validation passed: {len(feature_cols)} features")
+    
+    print(f"✅ Feature validation completed")
+    
     # Step 4: Verify predictions were created
     print(f"\n{'='*60}")
     print("Step 4: Verifying predictions")
