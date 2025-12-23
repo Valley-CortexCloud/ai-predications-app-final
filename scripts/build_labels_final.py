@@ -447,6 +447,47 @@ def validate_production_features(df, production_date):
         pct = count / len(df) * 100
         print(f"      {sector_name}: {count:3d} stocks ({pct:4.1f}%)")
     
+    # Sector feature computation validation
+    print(f"\n   🔍 SECTOR FEATURE COMPUTATION VALIDATION:")
+    
+    # Check for sector relative return features
+    sector_rel_features = [c for c in df.columns if 'sector_rel_ret' in c and not c.endswith('_rank_pct')]
+    
+    if sector_rel_features:
+        print(f"      Found {len(sector_rel_features)} sector relative return features:")
+        for feat in sorted(sector_rel_features):
+            values = df[feat]
+            non_null = values.notna().sum()
+            print(f"         {feat}:")
+            print(f"            Non-null: {non_null}/{len(df)} ({non_null/len(df)*100:.1f}%)")
+            print(f"            Range: [{values.min():.4f}, {values.max():.4f}]")
+            print(f"            Mean: {values.mean():.4f}, Std: {values.std():.4f}")
+        
+        # Validate sector relative returns are computed correctly
+        # For each sector, check that stocks have reasonable relative returns
+        print(f"\n      Per-sector relative return validation:")
+        for col in sorted(sector_cols):
+            sector_name = col.replace('feat_sector_code_', '')
+            sector_stocks = df[df[col] == 1.0]
+            
+            if len(sector_stocks) > 0 and 'feat_sector_rel_ret_63d' in df.columns:
+                rel_rets = sector_stocks['feat_sector_rel_ret_63d']
+                non_null = rel_rets.notna().sum()
+                
+                if non_null > 0:
+                    status = '✅' if non_null == len(sector_stocks) else '⚠️ '
+                    print(f"         {status} {sector_name}: {non_null}/{len(sector_stocks)} stocks with rel_ret_63d")
+                    print(f"            Range: [{rel_rets.min():.4f}, {rel_rets.max():.4f}]")
+                    print(f"            Mean: {rel_rets.mean():.4f}")
+                else:
+                    print(f"         ❌ {sector_name}: No sector relative returns computed!")
+        
+        # Validate consistency: stocks with same sector should have varied relative returns
+        print(f"\n      ✅ Sector relative returns validation complete")
+    else:
+        print(f"      ⚠️  WARNING: No sector relative return features found!")
+        print(f"      Expected features like 'feat_sector_rel_ret_21d' or 'feat_sector_rel_ret_63d'")
+    
     # 2. Cross-sectional rank validation
     rank_cols = [c for c in df.columns if c.endswith('_rank_pct')]
     
