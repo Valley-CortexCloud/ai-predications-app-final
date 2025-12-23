@@ -378,6 +378,170 @@ def main():
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     
+    # ============================================================
+    # PRODUCTION MODE: Load ONLY latest row per ticker (early exit)
+    # ============================================================
+    if args.production_only:
+        logging.info("=" * 60)
+        logging.info("🎯 PRODUCTION MODE: Loading latest rows only")
+        logging.info("=" * 60)
+        
+        # Get list of enhanced feature files
+        cache_path = Path(args.cache_dir)
+        feature_files = list(cache_path.glob("*_features_enhanced.parquet"))
+        
+        if not feature_files:
+            # Fallback to regular features
+            feature_files = list(cache_path.glob("*_features.parquet"))
+            feature_files = [f for f in feature_files if "_enhanced" not in f.name]
+        
+        if not feature_files:
+            raise RuntimeError(f"No feature files found in {args.cache_dir}")
+        
+        logging.info(f"Found {len(feature_files)} enhanced feature files")
+        
+        # Load ONLY latest row from each ticker
+        production_rows = []
+        
+        for ticker_file in feature_files:
+            try:
+                ticker = ticker_file.stem.split('_')[0].upper()
+                
+                # Skip SPY
+                if ticker == "SPY":
+                    continue
+                
+                # Load enhanced features
+                df = pd.read_parquet(ticker_file)
+                
+                if len(df) == 0:
+                    continue
+                
+                # Get ONLY the latest row (last row = most recent date)
+                latest_row = df.iloc[-1:].copy()
+                
+                # Reset index to get Date as column
+                latest_row = latest_row.reset_index()
+                
+                # Add symbol
+                latest_row['symbol'] = ticker
+                
+                production_rows.append(latest_row)
+                
+            except Exception as e:
+                logging.warning(f"Could not load {ticker_file.name}: {e}")
+                continue
+        
+        if not production_rows:
+            raise RuntimeError("No production data loaded!")
+        
+        # Combine: 500 tickers × 1 row = 500 rows total
+        df_all = pd.concat(production_rows, ignore_index=True)
+        
+        # Normalize date column name
+        if 'Date' in df_all.columns:
+            df_all = df_all.rename(columns={'Date': 'date'})
+        elif 'index' in df_all.columns:
+            df_all = df_all.rename(columns={'index': 'date'})
+        
+        # Ensure date column exists
+        if 'date' not in df_all.columns:
+            raise RuntimeError("No date column found in production data!")
+        
+        df_all['date'] = pd.to_datetime(df_all['date']).dt.normalize()
+        
+        print(f"✓ Loaded {len(df_all)} symbols for production date: {df_all['date'].iloc[0]}")
+        
+        # Remove OHLCV columns that shouldn't be features (before renaming)
+        for col in list(df_all.columns):
+            if col in EXCLUDE_COLUMNS and col not in ['symbol', 'date']:
+                df_all = df_all.drop(columns=[col])
+        
+        # Ensure feat_ prefix on all features (exclude metadata)
+        rename_map = {}
+        for col in df_all.columns:
+            if col not in ['symbol', 'date'] and not col.startswith('feat_'):
+                rename_map[col] = f'feat_{col}'
+        
+        if rename_map:
+            df_all.rename(columns=rename_map, inplace=True)
+        
+        # Remove duplicate columns (keep first occurrence)
+        df_all = df_all.loc[:, ~df_all.columns.duplicated()]
+        
+        # Compute cross-sectional features (across 500 stocks, single date)
+        logging.info("Computing cross-sectional rank features...")
+        df_all = add_cross_sectional_ranks(df_all)
+        n_rank = len([c for c in df_all.columns if c.startswith('feat_') and 'rank' in c])
+        logging.info(f"Added {n_rank} cross-sectional rank features")
+        
+        logging.info("Computing cross-sectional z-score features...")
+        df_all = add_cross_sectional_z_scores(df_all)
+        n_zscore = len([c for c in df_all.columns if c.startswith('feat_') and 'zscore' in c])
+        logging.info(f"Added {n_zscore} z-score features")
+        
+        logging.info("🔧 Computing composite quality...")
+        
+        # Compute composite quality for this date
+        quality_parts = []
+        
+        if 'feat_low_vol_raw' in df_all.columns:
+            vol_max = df_all['feat_low_vol_raw'].max()
+            if vol_max > 0:
+                vol_score = 1.0 - (df_all['feat_low_vol_raw'] / vol_max)
+                quality_parts.append(vol_score.fillna(0.5))
+        
+        if 'feat_in_uptrend' in df_all.columns:
+            quality_parts.append(df_all['feat_in_uptrend'])
+        
+        if 'feat_earnings_quality' in df_all.columns:
+            earn_score = ((df_all['feat_earnings_quality'] + 500) / 2000).clip(0, 1)
+            quality_parts.append(earn_score.fillna(0.5))
+        
+        if quality_parts:
+            df_all['feat_composite_quality'] = pd.concat(quality_parts, axis=1).mean(axis=1)
+        else:
+            df_all['feat_composite_quality'] = 0.5
+        
+        logging.info(f"✅ Composite quality: [{df_all['feat_composite_quality'].min():.3f}, {df_all['feat_composite_quality'].max():.3f}], mean={df_all['feat_composite_quality'].mean():.3f}")
+        
+        # Feature debugging
+        print("\n" + "=" * 60)
+        print("PRODUCTION FEATURES READY")
+        print("=" * 60)
+        print(f"Total features: {len([c for c in df_all.columns if c.startswith('feat_')])}")
+        print(f"Total rows: {len(df_all)}")
+        print(f"Date: {df_all['date'].iloc[0]}")
+        print(f"Symbols: {df_all['symbol'].nunique()}")
+        
+        # Check for critical cross-sectional features
+        critical_features = [
+            'feat_mom_12m_skip1m_rank_pct',
+            'feat_volatility_20_rank_pct',
+            'feat_composite_quality'
+        ]
+        
+        missing = [f for f in critical_features if f not in df_all.columns]
+        if missing:
+            logging.warning(f"⚠️  Missing some critical features: {missing}")
+            print(f"⚠️  Missing features: {missing}")
+        else:
+            print(f"✅ All critical cross-sectional features present")
+        
+        print("=" * 60)
+        
+        # Save
+        df_all.to_parquet(out_path, compression='zstd', index=False)
+        logging.info(f"✓ Wrote {len(df_all):,} rows to {out_path}")
+        logging.info(f"Features: {len([c for c in df_all.columns if c.startswith('feat_')])}, Symbols: {df_all['symbol'].nunique()}")
+        logging.info(f"Date: {df_all['date'].iloc[0]}")
+        
+        return  # Exit early - no need for training pipeline
+    
+    # ============================================================
+    # TRAINING MODE: Process all historical data
+    # ============================================================
+    
     # Parse grading scheme
     edges = [float(x) for x in args.edges.split(",") if x.strip()]
     gains = [float(x) for x in args.gains.split(",") if x.strip()]
@@ -668,18 +832,6 @@ def main():
     
     # Deduplicate by (date, symbol)
     df_all = df_all.sort_values(["date", "symbol"]).drop_duplicates(["date", "symbol"], keep="last")
-    
-    # Production mode: Filter to latest date ONLY (after all features computed)
-    if args.production_only:
-        latest_date = df_all['date'].max()
-        original_rows = len(df_all)
-        n_symbols = df_all['symbol'].nunique()
-        df_all = df_all[df_all['date'] == latest_date].copy()
-        
-        logging.info(f"🎯 PRODUCTION MODE: Filtered to latest date only")
-        logging.info(f"   {original_rows} rows → {len(df_all)} rows")
-        logging.info(f"   Latest date: {latest_date}")
-        logging.info(f"   Symbols: {df_all['symbol'].nunique()}/{n_symbols}")
     
     # ===== ENHANCED FEATURE DEBUGGING =====
     print("\n" + "=" * 60)
