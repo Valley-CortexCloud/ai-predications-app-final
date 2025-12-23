@@ -43,3 +43,7 @@ data_cache/sector_map.json
 # data_cache/
 # datasets/
 # model/
+
+# Test artifacts
+datasets/test_*.parquet
+

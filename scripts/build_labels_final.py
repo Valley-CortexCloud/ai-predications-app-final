@@ -435,7 +435,7 @@ def main():
         if not production_rows:
             raise RuntimeError("No production data loaded!")
         
-        # Combine: 500 tickers × 1 row = 500 rows total
+        # Combine: N tickers × 1 row = N rows total
         df_all = pd.concat(production_rows, ignore_index=True)
         
         # Normalize date column name
@@ -450,7 +450,15 @@ def main():
         
         df_all['date'] = pd.to_datetime(df_all['date']).dt.normalize()
         
-        print(f"✓ Loaded {len(df_all)} symbols for production date: {df_all['date'].iloc[0]}")
+        # Validate we have data
+        if len(df_all) == 0:
+            raise RuntimeError("No production data after loading!")
+        
+        # Store production date for logging
+        production_date = df_all['date'].iloc[0]
+        n_symbols = df_all['symbol'].nunique()
+        
+        print(f"✓ Loaded {len(df_all)} symbols for production date: {production_date}")
         
         # Remove OHLCV columns that shouldn't be features (before renaming)
         for col in list(df_all.columns):
@@ -469,8 +477,8 @@ def main():
         # Remove duplicate columns (keep first occurrence)
         df_all = df_all.loc[:, ~df_all.columns.duplicated()]
         
-        # Compute cross-sectional features (across 500 stocks, single date)
-        logging.info("Computing cross-sectional rank features...")
+        # Compute cross-sectional features (across all stocks, single date)
+        logging.info(f"Computing cross-sectional rank features (across {n_symbols} symbols)...")
         df_all = add_cross_sectional_ranks(df_all)
         n_rank = len([c for c in df_all.columns if c.startswith('feat_') and 'rank' in c])
         logging.info(f"Added {n_rank} cross-sectional rank features")
@@ -487,7 +495,7 @@ def main():
         
         if 'feat_low_vol_raw' in df_all.columns:
             vol_max = df_all['feat_low_vol_raw'].max()
-            if vol_max > 0:
+            if vol_max > 1e-8:  # Avoid division by zero
                 vol_score = 1.0 - (df_all['feat_low_vol_raw'] / vol_max)
                 quality_parts.append(vol_score.fillna(0.5))
         
@@ -511,8 +519,8 @@ def main():
         print("=" * 60)
         print(f"Total features: {len([c for c in df_all.columns if c.startswith('feat_')])}")
         print(f"Total rows: {len(df_all)}")
-        print(f"Date: {df_all['date'].iloc[0]}")
-        print(f"Symbols: {df_all['symbol'].nunique()}")
+        print(f"Date: {production_date}")
+        print(f"Symbols: {n_symbols}")
         
         # Check for critical cross-sectional features
         critical_features = [
@@ -533,8 +541,8 @@ def main():
         # Save
         df_all.to_parquet(out_path, compression='zstd', index=False)
         logging.info(f"✓ Wrote {len(df_all):,} rows to {out_path}")
-        logging.info(f"Features: {len([c for c in df_all.columns if c.startswith('feat_')])}, Symbols: {df_all['symbol'].nunique()}")
-        logging.info(f"Date: {df_all['date'].iloc[0]}")
+        logging.info(f"Features: {len([c for c in df_all.columns if c.startswith('feat_')])}, Symbols: {n_symbols}")
+        logging.info(f"Date: {production_date}")
         
         return  # Exit early - no need for training pipeline
     
