@@ -313,9 +313,9 @@ def add_cross_sectional_ranks(df: pd.DataFrame) -> pd.DataFrame:
         'feat_parkinson_20', 'feat_garman_klass_20',
         'feat_beta_spy_126', 'feat_beta_spy_252',
         'feat_mom_12m_skip1m', 'feat_ret_63d',
-        'feat_avg_volume_20', 'adv20_dollar',
+        'feat_avg_volume_20', 'feat_adv20_dollar',  # Include adv20_dollar with feat_ prefix!
         'feat_rsi', 'feat_breakout_strength_20d',
-        'feat_sector_rel_ret_63d'
+        'feat_sector_rel_ret_63d'  # Total: 14 features
     ]
     rank_features = [f for f in rank_features if f in df.columns]
     
@@ -338,7 +338,7 @@ def add_cross_sectional_z_scores(df: pd.DataFrame) -> pd.DataFrame:
     logging.info("Computing cross-sectional z-score features...")
     
     z_features = ['feat_volatility_20', 'feat_mom_12m_skip1m', 'feat_ret_63d',
-                  'feat_beta_spy_126', 'adv20_dollar']
+                  'feat_beta_spy_126', 'feat_adv20_dollar']  # Include adv20_dollar with feat_ prefix!
     z_features = [f for f in z_features if f in df.columns]
     
     if z_features:
@@ -460,6 +460,114 @@ def main():
         
         print(f"✓ Loaded {len(df_all)} symbols for production date: {production_date}")
         
+        # ============================================================
+        # ADD: Compute liquidity features (adv20_dollar)
+        # ============================================================
+        
+        logging.info("Computing liquidity features (adv20_dollar)...")
+        
+        # Note: iterrows() is acceptable here since production mode typically processes
+        # ~500 symbols, and we need to load raw OHLCV files per-symbol anyway
+        for idx, row in df_all.iterrows():
+            symbol = row['symbol']
+            ticker_upper = symbol.upper()
+            
+            # Find raw OHLCV file
+            raw_fp = find_cache_for_ticker(ticker_upper, args.cache_dir)
+            
+            if raw_fp and raw_fp.exists():
+                try:
+                    df_raw = load_parquet_indexed(raw_fp)
+                    
+                    if "Close" in df_raw.columns and "Volume" in df_raw.columns:
+                        close = pd.to_numeric(df_raw["Close"], errors="coerce")
+                        vol = pd.to_numeric(df_raw["Volume"], errors="coerce").fillna(0)
+                        
+                        # Compute 20-day average dollar volume
+                        dollar_vol = (close * vol).rolling(20, min_periods=1).mean()
+                        
+                        # Get value for production date
+                        prod_date = row['date']
+                        if prod_date in dollar_vol.index:
+                            df_all.loc[idx, 'feat_adv20_dollar'] = dollar_vol.loc[prod_date]
+                        elif len(dollar_vol) > 0:
+                            # Use most recent value
+                            df_all.loc[idx, 'feat_adv20_dollar'] = dollar_vol.iloc[-1]
+                        else:
+                            df_all.loc[idx, 'feat_adv20_dollar'] = 0.0
+                            
+                except Exception as e:
+                    logging.warning(f"Could not compute adv20_dollar for {symbol}: {e}")
+                    df_all.loc[idx, 'feat_adv20_dollar'] = 0.0
+            else:
+                df_all.loc[idx, 'feat_adv20_dollar'] = 0.0
+        
+        logging.info(f"✅ Computed adv20_dollar for {(df_all['feat_adv20_dollar'] > 0).sum()}/{len(df_all)} symbols")
+        
+        # ============================================================
+        # ADD: Merge earnings calendar features
+        # ============================================================
+        
+        if args.earnings_file:
+            logging.info("Merging earnings calendar features...")
+            
+            # Load earnings events
+            earn_events = load_earnings_events(args.earnings_file)
+            
+            # Initialize earnings columns
+            df_all["feat_days_to_earn"] = np.nan
+            df_all["feat_days_since_earn"] = np.nan
+            df_all["feat_is_preearn_3"] = 0.0
+            df_all["feat_is_postearn_3"] = 0.0
+            df_all["feat_is_postearn_10"] = 0.0
+            df_all["feat_prev_earn_surprise_pct"] = np.nan
+            df_all["feat_earn_surprise_streak"] = 0.0
+            
+            # Merge earnings features for each symbol
+            for symbol in df_all['symbol'].unique():
+                symbol_mask = df_all['symbol'] == symbol
+                symbol_dates = pd.DatetimeIndex(df_all.loc[symbol_mask, 'date'])
+                
+                # Get earnings features for this symbol
+                earn_feat = add_earnings_calendar_features(symbol_dates, symbol, earn_events)
+                
+                # Merge into df_all
+                for col in earn_feat.columns:
+                    if col != 'date':
+                        df_all.loc[symbol_mask, col] = earn_feat[col].values
+            
+            # Compute earnings quality (streak × surprise)
+            logging.info("🔧 Computing earnings quality...")
+            
+            if 'feat_earn_surprise_streak' in df_all.columns and 'feat_prev_earn_surprise_pct' in df_all.columns:
+                streak = df_all['feat_earn_surprise_streak'].fillna(0).astype(float)
+                surprise = df_all['feat_prev_earn_surprise_pct'].fillna(0).astype(float).clip(-100, 300)
+                
+                df_all['feat_earnings_quality'] = (streak * surprise).fillna(0).clip(-500, 1500)
+                
+                non_zero = (df_all['feat_earnings_quality'] != 0).sum()
+                logging.info(f"✅ Earnings quality: {non_zero:,} / {len(df_all):,} non-zero ({non_zero/len(df_all)*100:.1f}%)")
+                
+                # Sample for verification
+                if non_zero > 0:
+                    sample = df_all[df_all['feat_earnings_quality'] != 0][
+                        ['symbol', 'date', 'feat_earn_surprise_streak', 'feat_prev_earn_surprise_pct', 'feat_earnings_quality']
+                    ].head(5)
+                    logging.info(f"Sample non-zero earnings quality:\n{sample}")
+            else:
+                logging.warning("⚠️ Earnings columns not found, setting earnings quality to 0")
+                df_all['feat_earnings_quality'] = 0.0
+        else:
+            logging.warning("⚠️ No earnings file provided, skipping earnings features")
+            df_all['feat_earnings_quality'] = 0.0
+            df_all["feat_days_to_earn"] = np.nan
+            df_all["feat_days_since_earn"] = np.nan
+            df_all["feat_is_preearn_3"] = 0.0
+            df_all["feat_is_postearn_3"] = 0.0
+            df_all["feat_is_postearn_10"] = 0.0
+            df_all["feat_prev_earn_surprise_pct"] = np.nan
+            df_all["feat_earn_surprise_streak"] = 0.0
+        
         # Remove OHLCV columns that shouldn't be features (before renaming)
         for col in list(df_all.columns):
             if col in EXCLUDE_COLUMNS and col not in ['symbol', 'date']:
@@ -477,7 +585,7 @@ def main():
         # Remove duplicate columns (keep first occurrence)
         df_all = df_all.loc[:, ~df_all.columns.duplicated()]
         
-        # Compute cross-sectional features (across all stocks, single date)
+        # Compute cross-sectional features (AFTER adding earnings/liquidity)
         logging.info(f"Computing cross-sectional rank features (across {n_symbols} symbols)...")
         df_all = add_cross_sectional_ranks(df_all)
         n_rank = len([c for c in df_all.columns if c.startswith('feat_') and 'rank' in c])
@@ -513,28 +621,162 @@ def main():
         
         logging.info(f"✅ Composite quality: [{df_all['feat_composite_quality'].min():.3f}, {df_all['feat_composite_quality'].max():.3f}], mean={df_all['feat_composite_quality'].mean():.3f}")
         
-        # Feature debugging
-        print("\n" + "=" * 60)
-        print("PRODUCTION FEATURES READY")
-        print("=" * 60)
-        print(f"Total features: {len([c for c in df_all.columns if c.startswith('feat_')])}")
-        print(f"Total rows: {len(df_all)}")
-        print(f"Date: {production_date}")
-        print(f"Symbols: {n_symbols}")
+        # ============================================================
+        # COMPREHENSIVE FEATURE VALIDATION
+        # ============================================================
         
-        # Check for critical cross-sectional features
-        critical_features = [
-            'feat_mom_12m_skip1m_rank_pct',
-            'feat_volatility_20_rank_pct',
-            'feat_composite_quality'
+        print("\n" + "=" * 60)
+        print("ENHANCED FEATURE DEBUGGING")
+        print("=" * 60)
+        
+        feature_cols = [c for c in df_all.columns if c.startswith('feat_')]
+        
+        print(f"Total features: {len(feature_cols)}")
+        print(f"Total rows: {len(df_all)}")
+        print(f"Date range: {df_all['date'].min()} to {df_all['date'].max()}")
+        print(f"Symbols: {df_all['symbol'].nunique()}")
+        
+        # ============================================================
+        # Feature category breakdown
+        # ============================================================
+        
+        print(f"\n📋 FEATURE BREAKDOWN BY CATEGORY:")
+        
+        # Count by category
+        technical_features = [c for c in feature_cols if any(x in c for x in ['rsi', 'macd', 'atr', 'adx', 'stoch', 'williams', 'mfi', 'cci', 'bb_', 'ema', 'sma'])]
+        momentum_features = [c for c in feature_cols if 'mom' in c or 'ret_' in c]
+        volatility_features = [c for c in feature_cols if 'vol' in c or 'atr' in c or 'parkinson' in c or 'garman' in c]
+        volume_features = [c for c in feature_cols if 'volume' in c or 'obv' in c or 'vpt' in c or 'adv' in c]
+        earnings_features = [c for c in feature_cols if 'earn' in c]
+        sector_features = [c for c in feature_cols if 'sector' in c]
+        cross_sectional_features = [c for c in feature_cols if '_rank_pct' in c or '_zscore_xsec' in c]
+        quality_features = [c for c in feature_cols if 'quality' in c or 'composite' in c]
+        
+        print(f"  Technical indicators:    {len(technical_features)}")
+        print(f"  Momentum/Returns:        {len(momentum_features)}")
+        print(f"  Volatility:              {len(volatility_features)}")
+        print(f"  Volume:                  {len(volume_features)}")
+        print(f"  Earnings:                {len(earnings_features)}")
+        print(f"  Sector:                  {len(sector_features)}")
+        print(f"  Cross-sectional:         {len(cross_sectional_features)}")
+        print(f"  Quality:                 {len(quality_features)}")
+        
+        # ============================================================
+        # Check for critical features
+        # ============================================================
+        
+        print(f"\n🔍 CRITICAL FEATURE VALIDATION:")
+        
+        critical_features = {
+            'Earnings': ['feat_earnings_quality', 'feat_prev_earn_surprise_pct', 'feat_days_to_earn'],
+            'Liquidity': ['feat_adv20_dollar'],
+            'Cross-sectional': ['feat_mom_12m_skip1m_rank_pct', 'feat_volatility_20_rank_pct', 'feat_ret_63d_zscore_xsec'],
+            'Quality': ['feat_composite_quality'],
+            'Sector': ['feat_sector_rel_ret_63d'],
+        }
+        
+        all_critical_present = True
+        
+        for category, features in critical_features.items():
+            missing = [f for f in features if f not in df_all.columns]
+            if missing:
+                print(f"  ❌ {category}: MISSING {missing}")
+                all_critical_present = False
+            else:
+                print(f"  ✅ {category}: All present ({len(features)} features)")
+        
+        if not all_critical_present:
+            logging.warning("⚠️ Some critical features are missing!")
+        
+        # ============================================================
+        # Feature coverage statistics
+        # ============================================================
+        
+        print(f"\n📊 FEATURE COVERAGE STATISTICS:")
+        
+        key_features = [
+            'feat_earnings_quality',
+            'feat_prev_earn_surprise_pct',
+            'feat_days_to_earn',
+            'feat_days_since_earn',
+            'feat_adv20_dollar',
+            'feat_mom_12m_skip1m',
+            'feat_composite_quality',
+            'feat_volatility_20',
+            'feat_rsi',
         ]
         
-        missing = [f for f in critical_features if f not in df_all.columns]
-        if missing:
-            logging.warning(f"⚠️  Missing some critical features: {missing}")
-            print(f"⚠️  Missing features: {missing}")
+        for feat in key_features:
+            if feat in df_all.columns:
+                vals = df_all[feat]
+                non_null = vals.notna().sum()
+                non_zero = (vals != 0).sum()
+                
+                print(f"  {feat}:")
+                print(f"    Non-null: {non_null}/{len(vals)} ({non_null/len(vals)*100:.1f}%)")
+                print(f"    Non-zero: {non_zero}/{len(vals)} ({non_zero/len(vals)*100:.1f}%)")
+                if non_null > 0:
+                    print(f"    Range: [{vals.min():.4f}, {vals.max():.4f}]")
+                    print(f"    Mean: {vals.mean():.4f}, Std: {vals.std():.4f}")
+            else:
+                print(f"  ❌ {feat}: MISSING!")
+        
+        # ============================================================
+        # ALL FEATURE COLUMNS (detailed list)
+        # ============================================================
+        
+        print(f"\n📋 ALL FEATURE COLUMNS ({len(feature_cols)} total):")
+        
+        for i, feat in enumerate(sorted(feature_cols), 1):
+            vals = df_all[feat]
+            sample_val = vals.iloc[0] if len(vals) > 0 else np.nan
+            non_zero = (vals != 0).sum()
+            
+            print(f"  {i:3d}. {feat:50s} (sample={sample_val:>10.4f}, non-zero={non_zero}/{len(vals)})")
+        
+        # ============================================================
+        # Problematic features
+        # ============================================================
+        
+        print(f"\n⚠️ PROBLEMATIC FEATURES:")
+        
+        all_zero = [c for c in feature_cols if (df_all[c] == 0).all()]
+        all_nan = [c for c in feature_cols if df_all[c].isna().all()]
+        constant = [c for c in feature_cols if df_all[c].nunique() == 1]
+        
+        if all_zero:
+            print(f"  All-zero features ({len(all_zero)}): {all_zero[:5]}")
         else:
-            print(f"✅ All critical cross-sectional features present")
+            print(f"  ✓ No all-zero features")
+        
+        if all_nan:
+            print(f"  All-NaN features ({len(all_nan)}): {all_nan}")
+        else:
+            print(f"  ✓ No all-NaN features")
+        
+        if constant:
+            print(f"  Constant features ({len(constant)}): {[(c, df_all[c].iloc[0]) for c in constant[:5]]}")
+        
+        # ============================================================
+        # Feature count validation
+        # ============================================================
+        
+        min_expected_feature_count = 127
+        actual_feature_count = len(feature_cols)
+        
+        print(f"\n🎯 FEATURE COUNT VALIDATION:")
+        print(f"  Minimum Expected: {min_expected_feature_count}")
+        print(f"  Actual:   {actual_feature_count}")
+        
+        if actual_feature_count < min_expected_feature_count:
+            missing_count = min_expected_feature_count - actual_feature_count
+            print(f"  ❌ MISSING {missing_count} FEATURES!")
+            logging.error(f"Feature count mismatch: expected at least {min_expected_feature_count}, got {actual_feature_count}")
+        elif actual_feature_count == min_expected_feature_count:
+            print(f"  ✅ Feature count matches exactly!")
+        else:
+            extra_count = actual_feature_count - min_expected_feature_count
+            print(f"  ✅ Feature count exceeds minimum by {extra_count} (enhanced features included)")
         
         print("=" * 60)
         
