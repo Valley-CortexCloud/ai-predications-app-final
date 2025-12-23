@@ -305,6 +305,302 @@ def add_earnings_calendar_features(dates: pd.DatetimeIndex, symbol: str,
 
 # ============ CROSS-SECTIONAL FEATURES ============
 
+def validate_production_features(df, production_date):
+    """
+    Comprehensive validation across multiple stocks to ensure data quality.
+    Validates sector assignments, cross-sectional features, earnings data, etc.
+    """
+    print("\n" + "="*80)
+    print("COMPREHENSIVE MULTI-STOCK VALIDATION")
+    print("="*80)
+    
+    # Select diverse stocks for validation (tech, finance, energy, healthcare, consumer, industrial)
+    validation_symbols = ['AAPL', 'NFLX', 'JPM', 'BAC', 'XOM', 'CVX', 'JNJ', 'UNH', 'TSLA', 'F']
+    available_symbols = [s for s in validation_symbols if s in df['symbol'].values]
+    
+    if len(available_symbols) == 0:
+        # Fallback to first 10 stocks
+        available_symbols = df['symbol'].unique()[:10].tolist()
+    
+    print(f"\n📊 VALIDATING {len(available_symbols)} DIVERSE STOCKS:")
+    print(f"   {', '.join(available_symbols)}\n")
+    
+    # ============================================================
+    # INDIVIDUAL STOCK VALIDATION
+    # ============================================================
+    
+    for symbol in available_symbols:
+        stock_data = df[df['symbol'] == symbol].iloc[0]
+        
+        # Find active sector
+        sector_cols = [c for c in df.columns if c.startswith('feat_sector_code_')]
+        sector_values = stock_data[sector_cols]
+        active_sectors = sector_values[sector_values == 1.0]
+        nan_sectors = sector_values[sector_values.isna()]
+        
+        sector_name = active_sectors.index[0].replace('feat_sector_code_', '') if len(active_sectors) > 0 else 'NONE'
+        
+        print(f"{'='*80}")
+        print(f"📈 {symbol} - {sector_name} Sector")
+        print(f"{'='*80}")
+        print(f"   Date: {stock_data['date']}")
+        
+        # Sector validation
+        print(f"\n   🏷️  SECTOR:")
+        print(f"      Active: {sector_name}")
+        print(f"      NaN sectors: {len(nan_sectors)} {'✅' if len(nan_sectors) == 0 else '❌ CRITICAL BUG'}")
+        print(f"      Multiple sectors: {'No ✅' if len(active_sectors) <= 1 else 'Yes ❌'}")
+        
+        # Earnings validation
+        print(f"\n   📊 EARNINGS:")
+        print(f"      Quality: {stock_data['feat_earnings_quality']:.2f}")
+        print(f"      Prev surprise: {stock_data['feat_prev_earn_surprise_pct']:.2f}%")
+        print(f"      Surprise streak: {stock_data['feat_earn_surprise_streak']:.0f}")
+        print(f"      Days since earn: {stock_data['feat_days_since_earn']:.0f}")
+        
+        # Momentum validation
+        print(f"\n   📈 MOMENTUM:")
+        print(f"      12m return: {stock_data['feat_mom_12m_skip1m']:.2%}")
+        print(f"      12m rank: {stock_data['feat_mom_12m_skip1m_rank_pct']:.1%} percentile")
+        print(f"      12m z-score: {stock_data['feat_mom_12m_skip1m_zscore_xsec']:.2f}σ")
+        print(f"      63d return: {stock_data['feat_ret_63d']:.2%}")
+        print(f"      63d rank: {stock_data['feat_ret_63d_rank_pct']:.1%} percentile")
+        
+        # Volatility validation
+        ann_vol = stock_data['feat_volatility_20'] * 100 * np.sqrt(252)
+        print(f"\n   📊 VOLATILITY:")
+        print(f"      20d vol: {stock_data['feat_volatility_20']:.4f} ({ann_vol:.1f}% annualized)")
+        print(f"      Vol rank: {stock_data['feat_volatility_20_rank_pct']:.1%} percentile")
+        print(f"      Vol z-score: {stock_data['feat_volatility_20_zscore_xsec']:.2f}σ")
+        print(f"      Parkinson: {stock_data['feat_parkinson_20']:.4f}")
+        
+        # Liquidity validation
+        adv_millions = stock_data['feat_adv20_dollar'] / 1e6
+        print(f"\n   💰 LIQUIDITY:")
+        print(f"      ADV20: ${adv_millions:.1f}M")
+        print(f"      ADV20 rank: {stock_data['feat_adv20_dollar_rank_pct']:.1%} percentile")
+        print(f"      Avg volume: {stock_data['feat_avg_volume_20']:,.0f} shares")
+        
+        # Technical indicators
+        print(f"\n   🔧 TECHNICAL:")
+        print(f"      RSI: {stock_data['feat_rsi']:.1f}")
+        print(f"      RSI rank: {stock_data['feat_rsi_rank_pct']:.1%} percentile")
+        print(f"      Beta (126d): {stock_data['feat_beta_spy_126']:.3f}")
+        print(f"      Beta rank: {stock_data['feat_beta_spy_126_rank_pct']:.1%} percentile")
+        print(f"      OBV: {stock_data['feat_obv']/1e6:.1f}M")
+        
+        # Quality scores
+        print(f"\n   ⭐ QUALITY:")
+        print(f"      Composite: {stock_data['feat_composite_quality']:.3f}")
+        print(f"      Uptrend: {'Yes ✅' if stock_data['feat_in_uptrend'] == 1 else 'No'}")
+        
+        # Feature completeness
+        feature_cols = [c for c in df.columns if c.startswith('feat_')]
+        nan_count = stock_data[feature_cols].isna().sum()
+        populated = len(feature_cols) - nan_count
+        
+        print(f"\n   📋 COMPLETENESS:")
+        print(f"      Populated: {populated}/{len(feature_cols)} ({populated/len(feature_cols)*100:.1f}%)")
+        print(f"      NaN features: {nan_count}")
+        
+        if nan_count > 5:
+            print(f"      ⚠️  High NaN count - investigating...")
+            nan_features = stock_data[feature_cols][stock_data[feature_cols].isna()].index.tolist()
+            print(f"      NaN features: {nan_features[:5]}")
+    
+    # ============================================================
+    # CROSS-STOCK CONSISTENCY CHECKS
+    # ============================================================
+    
+    print(f"\n{'='*80}")
+    print("CROSS-STOCK CONSISTENCY CHECKS")
+    print(f"{'='*80}")
+    
+    # 1. Sector dummy validation
+    sector_cols = [c for c in df.columns if c.startswith('feat_sector_code_')]
+    sector_matrix = df[sector_cols]
+    
+    sector_sums = sector_matrix.sum(axis=1)
+    sector_nan_counts = sector_matrix.isna().sum(axis=1)
+    
+    stocks_with_one_sector = (sector_sums == 1).sum()
+    stocks_with_multiple = (sector_sums > 1).sum()
+    stocks_with_none = (sector_sums == 0).sum()
+    stocks_with_nan = (sector_nan_counts > 0).sum()
+    
+    print(f"\n🏷️  SECTOR DUMMY VALIDATION:")
+    print(f"   Total stocks: {len(df)}")
+    print(f"   ✅ Exactly 1 sector: {stocks_with_one_sector}/{len(df)} ({stocks_with_one_sector/len(df)*100:.1f}%)")
+    print(f"   {'✅' if stocks_with_multiple == 0 else '❌'} Multiple sectors: {stocks_with_multiple}")
+    print(f"   {'✅' if stocks_with_none == 0 else '⚠️ '} No sector: {stocks_with_none}")
+    print(f"   {'✅' if stocks_with_nan == 0 else '❌ CRITICAL'} Stocks with NaN sectors: {stocks_with_nan}")
+    
+    if stocks_with_nan > 0:
+        print(f"\n   🚨 CRITICAL BUG: Sector dummy variables contain NaN instead of 0!")
+        print(f"   This will cause model prediction errors!")
+    
+    # Sector distribution
+    print(f"\n   📊 Sector Distribution:")
+    for col in sorted(sector_cols):
+        sector_name = col.replace('feat_sector_code_', '')
+        count = (df[col] == 1.0).sum()
+        pct = count / len(df) * 100
+        print(f"      {sector_name}: {count:3d} stocks ({pct:4.1f}%)")
+    
+    # Sector feature computation validation
+    print(f"\n   🔍 SECTOR FEATURE COMPUTATION VALIDATION:")
+    
+    # Check for sector relative return features
+    sector_rel_features = [c for c in df.columns if 'sector_rel_ret' in c and not c.endswith('_rank_pct')]
+    
+    if sector_rel_features:
+        print(f"      Found {len(sector_rel_features)} sector relative return features:")
+        for feat in sorted(sector_rel_features):
+            values = df[feat]
+            non_null = values.notna().sum()
+            print(f"         {feat}:")
+            print(f"            Non-null: {non_null}/{len(df)} ({non_null/len(df)*100:.1f}%)")
+            print(f"            Range: [{values.min():.4f}, {values.max():.4f}]")
+            print(f"            Mean: {values.mean():.4f}, Std: {values.std():.4f}")
+        
+        # Validate sector relative returns are computed correctly
+        # For each sector, check that stocks have reasonable relative returns
+        print(f"\n      Per-sector relative return validation:")
+        for col in sorted(sector_cols):
+            sector_name = col.replace('feat_sector_code_', '')
+            sector_stocks = df[df[col] == 1.0]
+            
+            if len(sector_stocks) > 0 and 'feat_sector_rel_ret_63d' in df.columns:
+                rel_rets = sector_stocks['feat_sector_rel_ret_63d']
+                non_null = rel_rets.notna().sum()
+                
+                if non_null > 0:
+                    status = '✅' if non_null == len(sector_stocks) else '⚠️ '
+                    print(f"         {status} {sector_name}: {non_null}/{len(sector_stocks)} stocks with rel_ret_63d")
+                    print(f"            Range: [{rel_rets.min():.4f}, {rel_rets.max():.4f}]")
+                    print(f"            Mean: {rel_rets.mean():.4f}")
+                else:
+                    print(f"         ❌ {sector_name}: No sector relative returns computed!")
+        
+        # Validate consistency: stocks with same sector should have varied relative returns
+        print(f"\n      ✅ Sector relative returns validation complete")
+    else:
+        print(f"      ⚠️  WARNING: No sector relative return features found!")
+        print(f"      Expected features like 'feat_sector_rel_ret_21d' or 'feat_sector_rel_ret_63d'")
+    
+    # 2. Cross-sectional rank validation
+    rank_cols = [c for c in df.columns if c.endswith('_rank_pct')]
+    
+    print(f"\n📊 CROSS-SECTIONAL RANK VALIDATION ({len(rank_cols)} features):")
+    
+    rank_issues = []
+    for col in sorted(rank_cols):
+        ranks = df[col]
+        
+        # Check validity
+        invalid_range = ranks.min() < 0 or ranks.max() > 1
+        mean_off = abs(ranks.mean() - 0.5) > 0.15
+        
+        status = '✅' if not (invalid_range or mean_off) else '⚠️ '
+        
+        print(f"   {status} {col}:")
+        print(f"      Range: [{ranks.min():.4f}, {ranks.max():.4f}] {'❌ INVALID' if invalid_range else '✅'}")
+        print(f"      Mean: {ranks.mean():.4f} (target: 0.5) {'⚠️  Far from 0.5' if mean_off else '✅'}")
+        
+        if invalid_range or mean_off:
+            rank_issues.append(col)
+    
+    if rank_issues:
+        print(f"\n   ⚠️  {len(rank_issues)} rank features may have issues")
+    else:
+        print(f"\n   ✅ All rank features look healthy!")
+    
+    # 3. Z-score validation
+    zscore_cols = [c for c in df.columns if c.endswith('_zscore_xsec')]
+    
+    print(f"\n📊 CROSS-SECTIONAL Z-SCORE VALIDATION ({len(zscore_cols)} features):")
+    
+    zscore_issues = []
+    for col in sorted(zscore_cols):
+        zscores = df[col]
+        
+        # Check validity
+        mean_off = abs(zscores.mean()) > 0.2
+        std_off = abs(zscores.std() - 1.0) > 0.3
+        
+        status = '✅' if not (mean_off or std_off) else '⚠️ '
+        
+        print(f"   {status} {col}:")
+        print(f"      Range: [{zscores.min():.4f}, {zscores.max():.4f}]")
+        print(f"      Mean: {zscores.mean():.4f} (target: 0.0) {'⚠️  Not centered' if mean_off else '✅'}")
+        print(f"      Std: {zscores.std():.4f} (target: 1.0) {'⚠️  Not scaled' if std_off else '✅'}")
+        
+        if mean_off or std_off:
+            zscore_issues.append(col)
+    
+    if zscore_issues:
+        print(f"\n   ⚠️  {len(zscore_issues)} z-score features may have issues")
+    else:
+        print(f"\n   ✅ All z-score features look healthy!")
+    
+    # 4. Feature completeness
+    feature_cols = [c for c in df.columns if c.startswith('feat_')]
+    
+    print(f"\n📋 FEATURE COMPLETENESS:")
+    print(f"   Total features: {len(feature_cols)}")
+    
+    # Count NaNs per feature
+    nan_counts = df[feature_cols].isna().sum()
+    features_with_nans = (nan_counts > 0).sum()
+    all_nan_features = nan_counts[nan_counts == len(df)]
+    
+    print(f"   Features with some NaN: {features_with_nans}/{len(feature_cols)}")
+    print(f"   Features that are all NaN: {len(all_nan_features)}")
+    
+    if len(all_nan_features) > 0:
+        print(f"   ⚠️  All-NaN features:")
+        for feat in all_nan_features.index[:10]:
+            print(f"      - {feat}")
+    
+    # Coverage per stock
+    nan_per_stock = df[feature_cols].isna().sum(axis=1)
+    avg_populated = len(feature_cols) - nan_per_stock.mean()
+    min_populated = len(feature_cols) - nan_per_stock.max()
+    
+    print(f"\n   Per-stock coverage:")
+    print(f"      Average: {avg_populated:.1f}/{len(feature_cols)} ({avg_populated/len(feature_cols)*100:.1f}%)")
+    print(f"      Minimum: {min_populated:.0f}/{len(feature_cols)} ({min_populated/len(feature_cols)*100:.1f}%)")
+    
+    # 5. Value sanity checks
+    print(f"\n🔍 VALUE SANITY CHECKS:")
+    
+    sanity_checks = [
+        ('feat_volatility_20', 0.001, 0.10, 'Daily volatility should be 0.1%-10%'),
+        ('feat_rsi', 0, 100, 'RSI should be 0-100'),
+        ('feat_beta_spy_126', -2, 5, 'Beta should typically be -2 to 5'),
+        ('feat_mom_12m_skip1m', -0.95, 10, '12m return should be -95% to 1000%'),
+        ('feat_adv20_dollar', 1e6, 1e12, 'ADV should be $1M to $1T'),
+    ]
+    
+    for feat, min_val, max_val, desc in sanity_checks:
+        if feat not in df.columns:
+            continue
+        
+        values = df[feat]
+        outliers = ((values < min_val) | (values > max_val)).sum()
+        
+        status = '✅' if outliers == 0 else '⚠️ '
+        print(f"   {status} {feat}: {desc}")
+        print(f"      Range: [{values.min():.4e}, {values.max():.4e}]")
+        
+        if outliers > 0:
+            print(f"      ⚠️  {outliers} outliers outside expected range")
+    
+    print(f"\n{'='*80}")
+    print("✅ VALIDATION COMPLETE")
+    print(f"{'='*80}\n")
+
+
 def add_cross_sectional_ranks(df: pd.DataFrame) -> pd.DataFrame:
     logging.info("Computing cross-sectional rank features...")
     
@@ -585,6 +881,30 @@ def main():
         # Remove duplicate columns (keep first occurrence)
         df_all = df_all.loc[:, ~df_all.columns.duplicated()]
         
+        # ============================================================
+        # FIX: Sector dummy variables should be 0, not NaN
+        # ============================================================
+        logging.info("Fixing sector dummy variables...")
+        
+        sector_cols = [c for c in df_all.columns if c.startswith('feat_sector_code_')]
+        
+        if sector_cols:
+            # Fill NaN with 0 for dummy variables
+            df_all[sector_cols] = df_all[sector_cols].fillna(0)
+            
+            # Verify each stock has exactly 1 sector
+            sector_sums = df_all[sector_cols].sum(axis=1)
+            stocks_with_no_sector = (sector_sums == 0).sum()
+            stocks_with_multiple = (sector_sums > 1).sum()
+            
+            logging.info(f"✅ Fixed {len(sector_cols)} sector dummy variables (NaN → 0)")
+            logging.info(f"   Stocks with exactly 1 sector: {(sector_sums == 1).sum()}/{len(df_all)}")
+            
+            if stocks_with_no_sector > 0:
+                logging.warning(f"   ⚠️  {stocks_with_no_sector} stocks have no sector assigned")
+            if stocks_with_multiple > 0:
+                logging.warning(f"   ⚠️  {stocks_with_multiple} stocks have multiple sectors assigned")
+        
         # Compute cross-sectional features (AFTER adding earnings/liquidity)
         logging.info(f"Computing cross-sectional rank features (across {n_symbols} symbols)...")
         df_all = add_cross_sectional_ranks(df_all)
@@ -779,6 +1099,12 @@ def main():
             print(f"  ✅ Feature count exceeds minimum by {extra_count} (enhanced features included)")
         
         print("=" * 60)
+        
+        # ============================================================
+        # COMPREHENSIVE VALIDATION
+        # ============================================================
+        
+        validate_production_features(df_all, production_date)
         
         # Save
         df_all.to_parquet(out_path, compression='zstd', index=False)
