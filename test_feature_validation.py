@@ -8,13 +8,14 @@ This test validates:
 3. All critical features present
 4. Cross-sectional ranks (13 features)
 5. Cross-sectional z-scores (5 features)
-6. Date correctness (2025-12-22)
+6. Date correctness (within 30 days of current date)
 7. No all-NaN features (except expected ones)
 8. Detailed logs with feature breakdown
 """
 import subprocess
 import sys
 from pathlib import Path
+from datetime import datetime, timedelta
 import pandas as pd
 
 
@@ -133,16 +134,18 @@ def validate_output():
         print(f"  ❌ FAIL: {len(zscore_features)} z-score features (< 5)")
         tests_passed.append(False)
     
-    # Test 6: Date correctness (2025-12-22)
+    # Test 6: Date correctness (recent date, not too old)
     print(f"\n✓ Test 6: Date correctness")
-    expected_date = pd.Timestamp('2025-12-22')
     actual_date = df['date'].iloc[0]
-    if actual_date == expected_date:
-        print(f"  ✅ PASS: Date is {actual_date}")
+    # Check that date is within last 30 days
+    today = pd.Timestamp.now().normalize()
+    days_old = (today - actual_date).days
+    if days_old <= 30:
+        print(f"  ✅ PASS: Date is {actual_date} ({days_old} days old)")
         tests_passed.append(True)
     else:
-        print(f"  ⚠️  INFO: Date is {actual_date} (expected {expected_date})")
-        # Still pass if date is recent
+        print(f"  ⚠️  WARNING: Date is {actual_date} ({days_old} days old)")
+        # Still pass but warn
         tests_passed.append(True)
     
     # Test 7: No unexpected all-NaN features

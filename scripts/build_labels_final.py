@@ -466,6 +466,8 @@ def main():
         
         logging.info("Computing liquidity features (adv20_dollar)...")
         
+        # Note: iterrows() is acceptable here since production mode typically processes
+        # ~500 symbols, and we need to load raw OHLCV files per-symbol anyway
         for idx, row in df_all.iterrows():
             symbol = row['symbol']
             ticker_upper = symbol.upper()
@@ -487,18 +489,20 @@ def main():
                         # Get value for production date
                         prod_date = row['date']
                         if prod_date in dollar_vol.index:
-                            df_all.loc[idx, 'adv20_dollar'] = dollar_vol.loc[prod_date]
-                        else:
+                            df_all.loc[idx, 'feat_adv20_dollar'] = dollar_vol.loc[prod_date]
+                        elif len(dollar_vol) > 0:
                             # Use most recent value
-                            df_all.loc[idx, 'adv20_dollar'] = dollar_vol.iloc[-1]
+                            df_all.loc[idx, 'feat_adv20_dollar'] = dollar_vol.iloc[-1]
+                        else:
+                            df_all.loc[idx, 'feat_adv20_dollar'] = 0.0
                             
                 except Exception as e:
                     logging.warning(f"Could not compute adv20_dollar for {symbol}: {e}")
-                    df_all.loc[idx, 'adv20_dollar'] = 0.0
+                    df_all.loc[idx, 'feat_adv20_dollar'] = 0.0
             else:
-                df_all.loc[idx, 'adv20_dollar'] = 0.0
+                df_all.loc[idx, 'feat_adv20_dollar'] = 0.0
         
-        logging.info(f"✅ Computed adv20_dollar for {(df_all['adv20_dollar'] > 0).sum()}/{len(df_all)} symbols")
+        logging.info(f"✅ Computed adv20_dollar for {(df_all['feat_adv20_dollar'] > 0).sum()}/{len(df_all)} symbols")
         
         # ============================================================
         # ADD: Merge earnings calendar features
