@@ -757,19 +757,22 @@ def main():
         # Feature count validation
         # ============================================================
         
-        expected_feature_count = 127
+        min_expected_feature_count = 127
         actual_feature_count = len(feature_cols)
         
         print(f"\n🎯 FEATURE COUNT VALIDATION:")
-        print(f"  Expected: {expected_feature_count}")
+        print(f"  Minimum Expected: {min_expected_feature_count}")
         print(f"  Actual:   {actual_feature_count}")
         
-        if actual_feature_count < expected_feature_count:
-            missing_count = expected_feature_count - actual_feature_count
+        if actual_feature_count < min_expected_feature_count:
+            missing_count = min_expected_feature_count - actual_feature_count
             print(f"  ❌ MISSING {missing_count} FEATURES!")
-            logging.error(f"Feature count mismatch: expected {expected_feature_count}, got {actual_feature_count}")
+            logging.error(f"Feature count mismatch: expected at least {min_expected_feature_count}, got {actual_feature_count}")
+        elif actual_feature_count == min_expected_feature_count:
+            print(f"  ✅ Feature count matches exactly!")
         else:
-            print(f"  ✅ Feature count matches!")
+            extra_count = actual_feature_count - min_expected_feature_count
+            print(f"  ✅ Feature count exceeds minimum by {extra_count} (enhanced features included)")
         
         print("=" * 60)
         
