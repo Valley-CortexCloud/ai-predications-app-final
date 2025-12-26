@@ -1,8 +1,7 @@
 name: Daily Top 20 Alpha
 
 on:
-  schedule: 
-    - cron: '30 8 * * 1'   # 4:30 AM ET
+  
   workflow_dispatch:
 
 jobs:
