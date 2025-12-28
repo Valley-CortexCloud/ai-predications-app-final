@@ -43,7 +43,7 @@ jobs:
 
       - name: Update ticker universe
         run: |
-          python scripts/fetch_ticker_universe.py
+          python scripts/fetch_ticker_universe_v2.py
           python3 scripts/build_sector_map.py \
             --out config/sector_map.csv \
             --symbols-file config/ticker_universe.csv \
@@ -69,7 +69,7 @@ jobs:
         run: |
           # Fetch S&P 500 and NASDAQ (incremental mode)
           python scripts/fetch_history_bulletproof.py \
-            --universe sp500 \
+            --ticker-file config/ticker_universe.csv \
             --period 2y \
             --out-dir data_cache/10y_ticker_features \
             --max-workers 1 \
