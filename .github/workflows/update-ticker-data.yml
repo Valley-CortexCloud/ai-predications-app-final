@@ -43,7 +43,7 @@ jobs:
 
       - name: Update ticker universe
         run: |
-          python scripts/fetch_ticker_universe_v2.py
+          python scripts/fetch_ticker_universe.py
           python3 scripts/build_sector_map.py \
             --out config/sector_map.csv \
             --symbols-file config/ticker_universe.csv \
