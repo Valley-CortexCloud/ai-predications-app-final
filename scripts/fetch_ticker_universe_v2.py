@@ -66,7 +66,12 @@ def fetch_russell1000() -> pd.DataFrame:
         
         # Read from the header line onward
         df = pd.read_csv(StringIO(response.text), skiprows=skip_rows)
-        
+
+        df = df.dropna(subset=['Ticker', 'Name'])  # Drop any rows missing core cols
+        df = df[df['Ticker'] != '-']  # Remove cash/derivatives
+        df = df[df['Ticker'].str.len() <= 6]  # Tickers usually 1-5 chars, catches bad rows
+        df = df[pd.to_numeric(df['Weight (%)'], errors='coerce') > 0]  # Must have positive weight
+
         if 'Ticker' not in df.columns or 'Name' not in df.columns:
             raise ValueError("CSV format missing Ticker/Name columns")
         
