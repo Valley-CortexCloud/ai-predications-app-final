@@ -1,0 +1,12 @@
+{
+  "snapshot_date": "2025-12-26",
+  "created_at": "2025-12-28T04:33:19.013674",
+  "git_commit": "599a9dc89a70d8aafb33c0c24822e2d7b68f7520",
+  "symbol_count": 501,
+  "feature_count": 112,
+  "all_nan_columns": [],
+  "file_checksums": {
+    "feature_matrix.parquet": "e297b5ce051019050fe5fd66882177011c85ae65c392e5fb63f44a091f54d629",
+    "universe.csv": "c889083cc6733048f6851103a2f8862771db17eba563436f07bff04d0b00801a"
+  }
+}
