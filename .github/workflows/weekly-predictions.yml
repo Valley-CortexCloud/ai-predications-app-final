@@ -121,15 +121,11 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          ref: main  # Ensure we have latest after fast-predictions committed
+          ref: main  # Get latest main after fast-predictions committed
 
       - name: Set date
         id: date
         run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-      - name: Pull latest changes
-        run: |
-          git pull origin main
 
       - name: Download top20 artifact
         uses: actions/download-artifact@v4
