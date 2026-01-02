@@ -1,0 +1,68 @@
+name: Earnings Staleness Validator
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'  # Sunday 2 AM UTC
+  workflow_dispatch:
+    inputs:
+      stale_days:
+        description: 'Days threshold for staleness'
+        default: '90'
+      min_quarters:
+        description: 'Minimum quarters required'
+        default: '6'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      stale_count: ${{ steps.validate.outputs.stale_count }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: pip install pandas
+      
+      - name: Validate earnings staleness
+        id: validate
+        run: |
+          python scripts/validate_earnings_staleness.py \
+            --earnings data/earnings.csv \
+            --universe config/ticker_universe.csv \
+            --stale-days ${{ inputs.stale_days || '90' }} \
+            --min-quarters ${{ inputs.min_quarters || '6' }} \
+            --output stale_tickers.txt \
+            --verbose
+          
+          STALE_COUNT=$(wc -l < stale_tickers.txt | tr -d ' ')
+          echo "stale_count=$STALE_COUNT" >> $GITHUB_OUTPUT
+          echo "📊 Found $STALE_COUNT stale tickers"
+      
+      - name: Upload stale tickers list
+        uses: actions/upload-artifact@v4
+        with:
+          name: stale-tickers
+          path: stale_tickers.txt
+          retention-days: 7
+      
+      - name: Summary
+        run: |
+          echo "## 📊 Earnings Staleness Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Stale tickers found:** ${{ steps.validate.outputs.stale_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -s stale_tickers.txt ]; then
+            echo "### Stale Tickers (first 50):" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            head -50 stale_tickers.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi

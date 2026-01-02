@@ -1,8 +1,12 @@
-name: Update Universe & Earnings
+name: Update Universe & Earnings (Manual Full Rebuild)
+
+# ⚠️ WARNING: This workflow processes ALL 517+ tickers and may timeout in GitHub Actions
+# For scheduled updates, use the new batch processing system:
+# - earnings-validator.yml (weekly staleness check)
+# - earnings-batch-update.yml (daily micro-refresh)
+# This workflow should only be used for manual full rebuilds when necessary
 
 on:
-  
-  
   workflow_dispatch: 
     inputs:
       mode:
@@ -24,7 +28,8 @@ permissions:
   contents: write
 
 jobs:
-  update-all: 
+  update-all:
+    name: Full Universe & Earnings Update (⚠️ May Timeout)
     runs-on: ubuntu-latest
     timeout-minutes: 180
     

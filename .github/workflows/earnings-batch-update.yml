@@ -1,0 +1,147 @@
+name: Earnings Batch Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: 'Tickers per batch'
+        default: '15'
+      batch_offset:
+        description: 'Starting offset (0 for first batch)'
+        default: '0'
+      use_stale_list:
+        description: 'Use stale_tickers.txt from validator'
+        type: boolean
+        default: true
+      lookback_days:
+        description: 'Days to look back for earnings'
+        default: '180'
+  
+  schedule:
+    # Daily micro-refresh at 11 AM UTC (6 AM ET during EST, 7 AM ET during EDT)
+    - cron: '0 11 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  update-batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # Short timeout for small batches
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install --upgrade yfinance requests-cache
+      
+      - name: Download stale tickers artifact (if available)
+        if: ${{ inputs.use_stale_list != false }}
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          name: stale-tickers
+          workflow: earnings-validator.yml
+          if_no_artifact_found: warn
+        continue-on-error: true
+      
+      - name: Determine batch mode
+        id: mode
+        run: |
+          if [ -f stale_tickers.txt ] && [ -s stale_tickers.txt ]; then
+            echo "mode=stale" >> $GITHUB_OUTPUT
+            echo "📋 Using stale tickers list"
+            TOTAL=$(wc -l < stale_tickers.txt | tr -d ' ')
+            echo "total_stale=$TOTAL" >> $GITHUB_OUTPUT
+          else
+            echo "mode=random" >> $GITHUB_OUTPUT
+            echo "🎲 No stale list - using random sample for daily refresh"
+          fi
+      
+      - name: Run batch update
+        env:
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+        run: |
+          BATCH_SIZE="${{ inputs.batch_size || '15' }}"
+          BATCH_OFFSET="${{ inputs.batch_offset || '0' }}"
+          LOOKBACK="${{ inputs.lookback_days || '180' }}"
+          
+          if [ "${{ steps.mode.outputs.mode }}" == "stale" ]; then
+            echo "🔄 Processing stale tickers (batch $BATCH_OFFSET, size $BATCH_SIZE)"
+            python scripts/update_earnings_incremental.py \
+              --existing data/earnings.csv \
+              --output data/earnings.csv \
+              --symbols-file config/ticker_universe.csv \
+              --stale-list stale_tickers.txt \
+              --batch-size $BATCH_SIZE \
+              --batch-offset $BATCH_OFFSET \
+              --lookback-days $LOOKBACK \
+              --provider-order yahoo,finnhub,fmp \
+              --verbose
+          else
+            echo "🎲 Daily micro-refresh: random 30 tickers"
+            python scripts/update_earnings_incremental.py \
+              --existing data/earnings.csv \
+              --output data/earnings.csv \
+              --symbols-file config/ticker_universe.csv \
+              --max-symbols 30 \
+              --lookback-days $LOOKBACK \
+              --provider-order yahoo,finnhub,fmp \
+              --verbose
+          fi
+      
+      - name: Commit earnings if changed
+        run: |
+          if [ -f data/earnings.csv ]; then
+            if git diff --quiet data/earnings.csv; then
+              echo "No changes to earnings calendar"
+            else
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git add data/earnings.csv
+              
+              ROWS=$(wc -l < data/earnings.csv)
+              SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
+              DATE=$(date -u +%Y-%m-%d)
+              MODE="${{ steps.mode.outputs.mode }}"
+              BATCH_SIZE="${{ inputs.batch_size || '15' }}"
+              BATCH_OFFSET="${{ inputs.batch_offset || '0' }}"
+              
+              git commit -m "chore: update earnings (batch $BATCH_OFFSET, size $BATCH_SIZE)" \
+                         -m "" \
+                         -m "- Mode: $MODE" \
+                         -m "- Total rows: $ROWS" \
+                         -m "- Symbols: $SYMBOLS" \
+                         -m "- Updated: $DATE"
+              
+              git push
+              echo "✅ Changes committed and pushed"
+            fi
+          fi
+      
+      - name: Summary
+        run: |
+          echo "## 📊 Earnings Batch Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode:** ${{ steps.mode.outputs.mode }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Batch size:** ${{ inputs.batch_size || '15' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Batch offset:** ${{ inputs.batch_offset || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f data/earnings.csv ]; then
+            ROWS=$(wc -l < data/earnings.csv)
+            SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
+            echo "### Current Data Stats:" >> $GITHUB_STEP_SUMMARY
+            echo "- Total rows: **$ROWS**" >> $GITHUB_STEP_SUMMARY
+            echo "- Symbols covered: **$SYMBOLS**" >> $GITHUB_STEP_SUMMARY
+          fi

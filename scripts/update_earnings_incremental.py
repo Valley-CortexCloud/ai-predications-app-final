@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
 """
 Incremental earnings calendar updater using existing build_earnings_calendar.py. 
-Loads existing earnings. csv, fetches recent events (Yahoo-first! ), merges, dedupes, saves.
+Loads existing earnings.csv, fetches recent events (Yahoo-first!), merges, dedupes, saves.
+
+New batch processing features:
+- --batch-size: Process N tickers per run (prevents timeouts)
+- --batch-offset: Starting offset in symbol list (for sequential batches)
+- --stale-list: File with stale tickers to process (one per line)
+- --stale-only: Only process tickers from stale list
+
+Note: Rate limiting is handled internally by build_earnings_calendar (especially for AlphaVantage).
+Batching is the primary mechanism to prevent GitHub Actions timeouts.
 """
 import argparse
 import pandas as pd
@@ -32,6 +41,13 @@ def main():
                     help="Provider priority (default: yahoo,finnhub,fmp,alphavantage)")
     ap.add_argument("--max-symbols", type=int, default=0, help="Limit symbols to process (0=all, default: 0)")
     ap.add_argument("--verbose", action="store_true")
+    
+    # Batch processing arguments
+    ap.add_argument("--batch-size", type=int, default=0, help="Number of tickers to process per batch (0=all)")
+    ap.add_argument("--batch-offset", type=int, default=0, help="Starting offset in symbol list (default: 0)")
+    ap.add_argument("--stale-list", type=str, default=None, help="Path to file with stale tickers (one per line)")
+    ap.add_argument("--stale-only", action="store_true", help="Only process tickers from stale list")
+    
     args = ap.parse_args()
     
     # Load existing data
@@ -66,13 +82,45 @@ def main():
     print(f"Date range: {start_date} to {end_date} ({(end_date - start_date).days} days)")
     
     # Load symbols
-    symbols = load_symbols(args.symbols_file)
-    random.shuffle(symbols)
-    print(f"✓ Loaded {len(symbols)} symbols from {args.symbols_file} (randomized order)")
-
-    if args.max_symbols > 0:
-        symbols = symbols[:args. max_symbols]
+    all_symbols = load_symbols(args.symbols_file)
+    
+    # Apply stale list filter if provided
+    if args.stale_list and Path(args.stale_list).exists():
+        with open(args.stale_list, 'r') as f:
+            stale_symbols = [line.strip() for line in f if line.strip()]
+        print(f"✓ Loaded {len(stale_symbols)} stale tickers from {args.stale_list}")
+        
+        if args.stale_only:
+            # Only process stale symbols
+            symbols = [s for s in all_symbols if s in stale_symbols]
+            print(f"✓ Filtered to {len(symbols)} symbols from stale list")
+        else:
+            # Prioritize stale symbols but include others
+            stale_set = set(stale_symbols)
+            stale_in_universe = [s for s in all_symbols if s in stale_set]
+            non_stale = [s for s in all_symbols if s not in stale_set]
+            random.shuffle(non_stale)
+            symbols = stale_in_universe + non_stale
+            print(f"✓ Prioritized {len(stale_in_universe)} stale symbols, {len(non_stale)} others")
+    else:
+        symbols = all_symbols
+        random.shuffle(symbols)
+        print(f"✓ Loaded {len(symbols)} symbols from {args.symbols_file} (randomized order)")
+    
+    # Apply batch processing if specified
+    if args.batch_size > 0:
+        batch_end = args.batch_offset + args.batch_size
+        original_count = len(symbols)
+        symbols = symbols[args.batch_offset:batch_end]
+        print(f"✓ Batch processing: offset {args.batch_offset}, size {args.batch_size}")
+        print(f"  Processing symbols {args.batch_offset+1} to {min(batch_end, original_count)} of {original_count}")
+    elif args.max_symbols > 0:
+        symbols = symbols[:args.max_symbols]
         print(f"⚠️  Limited to {args.max_symbols} symbols for testing")
+    
+    if len(symbols) == 0:
+        print(f"⚠️  No symbols to process after filtering/batching")
+        return 0
     
     print(f"Processing {len(symbols)} symbols")
     print(f"Provider order: {args.provider_order}")
