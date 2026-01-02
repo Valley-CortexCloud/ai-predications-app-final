@@ -168,7 +168,7 @@ Recent Grok Analysis (from weekly supercharge):
     
     try:
         response = client.chat.completions.create(
-            model="grok-2-1212",
+            model="grok-4",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}

@@ -116,10 +116,12 @@ jobs:
     needs: fast-predictions
     runs-on: ubuntu-latest
     permissions:
-      contents: read  # Only needs read access
+      contents: write  # Need write to commit supercharged CSV
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          ref: main  # Get latest main after fast-predictions committed
 
       - name: Set date
         id: date
@@ -150,6 +152,23 @@ jobs:
           name: supercharged-top20-${{ steps.date.outputs.DATE }}
           path: datasets/supercharged_*.csv
 
+      - name: Commit supercharged CSV
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # Add supercharged files
+          git add datasets/supercharged_*.csv
+          git add datasets/supercharged_metadata_*.json
+          
+          # Check if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "LLM supercharged predictions: $(date +'%Y-%m-%d')"
+            git push
+          fi
+
       - name: Email Supercharged Report
         uses: dawidd6/action-send-mail@v3
         with:
@@ -161,7 +180,7 @@ jobs:
           to: jvalley19@gmail.com
           from: Grok Quant Bot <jvalley19@gmail.com>
           body: |
-            LLM supercharged analysis attached!
+            LLM supercharged analysis attached and committed to repo!
             
             Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           attachments: datasets/supercharged_*.csv
