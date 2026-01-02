@@ -96,8 +96,8 @@ def identify_stale_tickers(
                 'priority': 4  # Low priority
             })
     
-    # Sort by priority (highest priority first)
-    stale.sort(key=lambda x: x['priority'])
+    # Sort by priority (highest priority first), then by symbol for stable ordering
+    stale.sort(key=lambda x: (x['priority'], x['symbol']))
     
     return stale
 
