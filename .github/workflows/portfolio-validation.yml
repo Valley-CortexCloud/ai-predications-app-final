@@ -37,50 +37,49 @@ jobs:
             --datasets-dir datasets \
             --output-dir data/portfolio
 
+      - name: Generate dashboard data
+        id: dashboard
+        run: |
+          # Generate dashboard JSON and token
+          python scripts/generate_dashboard_data.py \
+            --proposed data/portfolio/proposed_${{ steps.date.outputs.DATE }}.csv \
+            --tracker data/portfolio/tracker.csv \
+            --output-dir data/portfolio \
+            --dashboard-dir docs/dashboard/data
+          
+          # Extract token from token file for email
+          TOKEN=$(jq -r '.token' data/portfolio/tokens/${{ steps.date.outputs.DATE }}.json)
+          echo "TOKEN=$TOKEN" >> $GITHUB_OUTPUT
+
       - name: Upload proposed changes as artifact
         uses: actions/upload-artifact@v4
         with:
           name: proposed-portfolio-${{ steps.date.outputs.DATE }}
           path: data/portfolio/proposed_*.csv
 
-      - name: Commit proposed changes
+      - name: Commit proposed changes and dashboard data
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # Add proposed file
+          # Add proposed file, dashboard data, and tokens
           git add data/portfolio/proposed_*.csv
+          git add data/portfolio/tokens/*.json
+          git add docs/dashboard/data/*.json
           
           # Check if there are changes
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Portfolio validation: ${{ steps.date.outputs.DATE }}"
+            git commit -m "Portfolio validation with dashboard data: ${{ steps.date.outputs.DATE }}"
             git push
           fi
 
-      - name: Email proposed changes for review
+      - name: Send enhanced proposal email
         if: always()
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.EMAIL_USER }}
-          password: ${{ secrets.EMAIL_PASS }}
-          subject: "📊 Portfolio Review Required - ${{ steps.date.outputs.DATE }}"
-          to: jvalley19@gmail.com
-          from: Portfolio Intelligence <jvalley19@gmail.com>
-          body: |
-            Weekly portfolio validation complete!
-            
-            📋 Action Required:
-            1. Review attached proposed_${{ steps.date.outputs.DATE }}.csv
-            2. Approve/modify and save as confirmed_${{ steps.date.outputs.DATE }}.csv
-            3. Run trade_executor.py with confirmed file
-            
-            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            
-            ---
-            Portfolio Intelligence Engine
-            Renaissance-inspired exit detection with Grok AI
-          attachments: data/portfolio/proposed_*.csv
+        run: |
+          python scripts/send_proposal_email.py \
+            --proposed data/portfolio/proposed_${{ steps.date.outputs.DATE }}.csv \
+            --token ${{ steps.dashboard.outputs.TOKEN }} \
+            --date ${{ steps.date.outputs.DATE }} \
+            --to jvalley19@gmail.com

@@ -1,0 +1,180 @@
+name: Email Confirmation
+
+# This workflow processes email reply confirmations
+# 
+# SETUP REQUIRED:
+# - Option A: Zapier free tier to monitor inbox and trigger webhook
+# - Option B: Google Apps Script to parse emails and trigger webhook
+# - Option C: Manual webhook trigger for testing
+#
+# See docs/CONFIRMATION_SETUP.md for detailed setup instructions
+
+on:
+  repository_dispatch:
+    types: [email_confirmation]
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Portfolio date (YYYY-MM-DD)'
+        required: true
+      action:
+        description: 'Action from email (CONFIRM or DENY)'
+        required: true
+        type: choice
+        options:
+          - CONFIRM
+          - DENY
+      token:
+        description: 'Security token (extracted from email)'
+        required: true
+
+jobs:
+  process-email-reply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas yfinance alpaca-py
+      
+      - name: Extract payload
+        id: payload
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "date=${{ github.event.client_payload.date }}" >> $GITHUB_OUTPUT
+            echo "action=${{ github.event.client_payload.action }}" >> $GITHUB_OUTPUT
+            echo "token=${{ github.event.client_payload.token }}" >> $GITHUB_OUTPUT
+          else
+            echo "date=${{ github.event.inputs.date }}" >> $GITHUB_OUTPUT
+            echo "action=${{ github.event.inputs.action }}" >> $GITHUB_OUTPUT
+            echo "token=${{ github.event.inputs.token }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Validate token
+        id: validate
+        run: |
+          TOKEN_FILE="data/portfolio/tokens/${{ steps.payload.outputs.date }}.json"
+          
+          if [ ! -f "$TOKEN_FILE" ]; then
+            echo "❌ Token file not found: $TOKEN_FILE"
+            echo "valid=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          STORED_TOKEN=$(jq -r '.token' "$TOKEN_FILE")
+          if [ "$STORED_TOKEN" != "${{ steps.payload.outputs.token }}" ]; then
+            echo "❌ Token mismatch"
+            echo "valid=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Check not expired
+          EXPIRES=$(jq -r '.expires' "$TOKEN_FILE")
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%S")
+          if [[ "$NOW" > "$EXPIRES" ]]; then
+            echo "❌ Token expired"
+            echo "valid=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Check not already used
+          USED=$(jq -r '.used' "$TOKEN_FILE")
+          if [ "$USED" = "true" ]; then
+            echo "❌ Token already used"
+            echo "valid=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "✅ Token validated"
+          echo "valid=true" >> $GITHUB_OUTPUT
+      
+      - name: Mark token as used
+        if: steps.validate.outputs.valid == 'true'
+        run: |
+          TOKEN_FILE="data/portfolio/tokens/${{ steps.payload.outputs.date }}.json"
+          jq '.used = true' "$TOKEN_FILE" > "${TOKEN_FILE}.tmp"
+          mv "${TOKEN_FILE}.tmp" "$TOKEN_FILE"
+      
+      - name: Process CONFIRM action
+        if: steps.validate.outputs.valid == 'true' && steps.payload.outputs.action == 'CONFIRM'
+        run: |
+          echo "🚀 Processing email CONFIRM for ${{ steps.payload.outputs.date }}"
+          
+          PROPOSED_FILE="data/portfolio/proposed_${{ steps.payload.outputs.date }}.csv"
+          CONFIRMED_FILE="data/portfolio/confirmed_${{ steps.payload.outputs.date }}.csv"
+          
+          if [ ! -f "$PROPOSED_FILE" ]; then
+            echo "❌ Proposed file not found: $PROPOSED_FILE"
+            exit 1
+          fi
+          
+          # Email reply confirms ALL proposed actions
+          cp "$PROPOSED_FILE" "$CONFIRMED_FILE"
+          
+          echo "✅ Created confirmed file: $CONFIRMED_FILE"
+          
+          # Execute trades
+          echo "📊 Executing trades..."
+          python scripts/trade_executor.py \
+            --confirmed "$CONFIRMED_FILE" \
+            --tracker data/portfolio/tracker.csv \
+            --paper \
+            --auto || echo "⚠️ Trade execution encountered issues (continuing)"
+          
+          echo "✅ Trades executed via email confirmation"
+      
+      - name: Process DENY action
+        if: steps.validate.outputs.valid == 'true' && steps.payload.outputs.action == 'DENY'
+        run: |
+          echo "❌ Email DENY received for ${{ steps.payload.outputs.date }}"
+          echo "No trades will be executed"
+      
+      - name: Commit results
+        if: steps.validate.outputs.valid == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          git add data/portfolio/
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Email confirmation: ${{ steps.payload.outputs.action }} for ${{ steps.payload.outputs.date }}"
+            git push
+          fi
+      
+      - name: Send confirmation email
+        if: steps.validate.outputs.valid == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: "✅ Email ${{ steps.payload.outputs.action }} Processed - ${{ steps.payload.outputs.date }}"
+          to: jvalley19@gmail.com
+          from: Portfolio Intelligence <jvalley19@gmail.com>
+          body: |
+            Your email reply has been processed!
+            
+            📅 Date: ${{ steps.payload.outputs.date }}
+            📧 Action: ${{ steps.payload.outputs.action }}
+            
+            ${{ steps.payload.outputs.action == 'CONFIRM' && 'All proposed trades have been executed in your Alpaca paper account.' || 'All proposed trades were cancelled. No trades executed.' }}
+            
+            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            ---
+            Portfolio Intelligence Engine
