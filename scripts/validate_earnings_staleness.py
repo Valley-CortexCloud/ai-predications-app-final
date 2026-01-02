@@ -10,7 +10,6 @@ Identifies tickers that need earnings data refresh based on:
 import argparse
 import pandas as pd
 from pathlib import Path
-from datetime import datetime, timedelta
 import random
 import sys
 
@@ -66,7 +65,8 @@ def identify_stale_tickers(
         recent_data = sym_data[sym_data['earnings_date'] >= two_years_ago]
         recent_quarters = len(recent_data)
         
-        if max_date < cutoff:
+        # Check for stale date (skip if max_date is NaT)
+        if pd.notna(max_date) and max_date < cutoff:
             stale.append({
                 'symbol': symbol,
                 'reason': 'stale_date',

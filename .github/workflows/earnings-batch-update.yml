@@ -18,7 +18,7 @@ on:
         default: '180'
   
   schedule:
-    # Daily micro-refresh at 6 AM EST (11 AM UTC)
+    # Daily micro-refresh at 11 AM UTC (6 AM ET during EST, 7 AM ET during EDT)
     - cron: '0 11 * * *'
 
 permissions:
