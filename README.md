@@ -436,6 +436,74 @@ Covers:
 - Weekly workflow and examples
 - Configuration and troubleshooting
 
+## 🌐 Web Dashboard + Email Confirmation System (NEW)
+
+Review and approve portfolio rotations via interactive web dashboard or email reply.
+
+### Features
+- **🎨 Interactive Dashboard**: Single-page web UI with TailwindCSS + Alpine.js
+  - Toggle SELL ↔ HOLD for current holdings
+  - Toggle BUY ↔ SKIP for new recommendations
+  - Color-coded exit scores (red >70, green <60)
+  - Real-time token expiry countdown
+- **📧 Enhanced Email Notifications**: Review link + quick reply support
+  - Summary of proposed trades in email
+  - One-click dashboard access with secure token
+  - Quick CONFIRM/DENY via email reply (optional setup)
+- **🔒 Security**: Cryptographic tokens with 24-hour expiration, single-use
+- **🚀 GitHub Actions**: Automated confirmation processing via workflows
+- **📱 Mobile-Friendly**: Responsive design works on all devices
+- **🆓 Free Tier**: GitHub Pages + Actions only, no external services required
+
+### Quick Start
+```bash
+# 1. Enable GitHub Pages
+# Go to: Settings → Pages → Source: /docs
+
+# 2. Generate dashboard data and send email
+python scripts/generate_dashboard_data.py \
+  --proposed data/portfolio/proposed_2026-01-05.csv
+  
+python scripts/send_proposal_email.py \
+  --proposed data/portfolio/proposed_2026-01-05.csv \
+  --token <generated-token> \
+  --date 2026-01-05
+
+# 3. User reviews via dashboard at:
+# https://valley-cortexcloud.github.io/ai-predications-app-final/dashboard/
+
+# 4. Confirmation triggers GitHub Action to execute trades
+```
+
+### Key Files
+- `docs/dashboard/index.html` - Interactive web dashboard
+- `scripts/generate_dashboard_data.py` - Convert proposals to JSON with tokens
+- `scripts/send_proposal_email.py` - Enhanced email with review link
+- `.github/workflows/dashboard-confirmation.yml` - Process dashboard submissions
+- `.github/workflows/email-confirmation.yml` - Process email replies
+- `data/portfolio/tokens/` - Secure token storage
+
+### Setup Guide
+📚 **[Confirmation System Setup Guide](docs/CONFIRMATION_SETUP.md)**
+
+Complete instructions for:
+- GitHub Pages configuration
+- Personal Access Token creation
+- Email automation setup (Zapier/Google Apps Script)
+- End-to-end testing
+- Troubleshooting and security best practices
+
+### Workflow Integration
+The confirmation system is integrated into the weekly portfolio validation workflow:
+1. **Monday 5 AM ET**: `portfolio-validation.yml` runs
+2. Generates `proposed_*.csv` with exit scores and recommendations
+3. Creates dashboard JSON data with secure token
+4. Commits data to repo (triggers GitHub Pages deployment)
+5. Sends email with dashboard review link
+6. **User reviews** via dashboard or email reply
+7. **Confirmation triggers** trade execution in Alpaca paper account
+8. Updates `tracker.csv` and sends confirmation email
+
 ## 🐛 Troubleshooting
 
 ### "No data to append" in incremental mode
