@@ -288,6 +288,18 @@ python scripts/production_inference.py --snapshots-root data/snapshots --output-
 
 **Runtime:** < 5 minutes (fast!)
 
+### Portfolio Validation (`.github/workflows/portfolio-validation.yml`)
+**Schedule:** Monday 5:00 AM ET
+
+**Steps:**
+1. Run portfolio validator (exit detection with Grok)
+2. Generate proposed portfolio changes
+3. Upload proposed changes as artifact
+4. Email for human review
+5. Commit proposed file
+
+**Runtime:** ~2-3 minutes
+
 ## 📊 Data Storage
 
 ### Expected Sizes (after 3 months of weekly runs)
@@ -382,6 +394,48 @@ python scripts/production_inference.py
 - Check data age (< 7 days)
 - Monitor prediction distribution
 
+## 💼 Portfolio Intelligence Engine (NEW)
+
+Transform predictions into portfolio action with AI-powered exit detection and automated trade execution.
+
+### Features
+- **Exit Detection**: Grok AI monitors holdings for deterioration signals
+- **Asymmetric Holding**: Let winners run, ruthlessly exit failures
+- **Low Turnover**: 15-25% monthly max (Renaissance-inspired)
+- **Human-in-the-Loop**: Manual confirmation before trades (V1)
+- **Alpaca Integration**: Automated order generation and submission
+
+### Quick Start
+```bash
+# Initialize portfolio
+python scripts/portfolio_tracker.py --init
+
+# Weekly validation (runs automatically via GitHub Actions)
+python scripts/portfolio_validator.py --dry-run  # Test mode
+
+# Generate orders from confirmed changes
+python scripts/trade_executor.py --confirmed data/portfolio/confirmed_2024-01-15.csv --paper
+
+# Sync portfolio state
+python scripts/portfolio_tracker.py --sync
+python scripts/portfolio_tracker.py --report
+```
+
+### Key Scripts
+- `scripts/portfolio_validator.py` - Exit detection with Grok AI
+- `scripts/trade_executor.py` - Order generation and Alpaca submission  
+- `scripts/portfolio_tracker.py` - Portfolio state management
+
+### Documentation
+📚 **[Complete Portfolio Architecture Guide](docs/PORTFOLIO_ARCHITECTURE.md)**
+
+Covers:
+- Architecture principles and data flow
+- Exit score thresholds and rationale
+- Position sizing formulas
+- Weekly workflow and examples
+- Configuration and troubleshooting
+
 ## 🐛 Troubleshooting
 
 ### "No data to append" in incremental mode
@@ -397,6 +451,10 @@ python scripts/production_inference.py
 - Check snapshot age (may need fresh data)
 - Verify symbol count (universe changes)
 - Review all-NaN columns (some features expected)
+
+### "XAI_API_KEY not set"
+- Required for portfolio_validator.py
+- Set environment variable: `export XAI_API_KEY="your-key"`
 
 ## 📞 Support
 
