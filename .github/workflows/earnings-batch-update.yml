@@ -47,7 +47,7 @@ jobs:
           pip install --upgrade yfinance requests-cache
       
       - name: Download stale tickers artifact (if available)
-        if: ${{ inputs.use_stale_list != 'false' }}
+        if: ${{ inputs.use_stale_list != false }}
         uses: dawidd6/action-download-artifact@v3
         with:
           name: stale-tickers

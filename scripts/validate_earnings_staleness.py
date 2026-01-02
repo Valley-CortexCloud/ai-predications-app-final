@@ -19,7 +19,8 @@ def identify_stale_tickers(
     universe_df: pd.DataFrame,
     stale_days: int = 90,
     min_quarters: int = 6,
-    random_sample_pct: float = 0.10
+    random_sample_pct: float = 0.10,
+    random_seed: int = None
 ) -> list:
     """
     Returns list of dicts with ticker info that needs refreshing.
@@ -39,7 +40,7 @@ def identify_stale_tickers(
     """
     today = pd.Timestamp.today().normalize()
     cutoff = today - pd.Timedelta(days=stale_days)
-    two_years_ago = today - pd.Timedelta(days=730)
+    two_years_ago = today - pd.Timedelta(days=2 * 365)  # 2 years for quarterly coverage check
     
     stale = []
     fresh = []
@@ -84,6 +85,8 @@ def identify_stale_tickers(
     
     # Add random sample of fresh tickers for rolling freshness
     if fresh and random_sample_pct > 0:
+        if random_seed is not None:
+            random.seed(random_seed)
         sample_size = max(1, int(len(fresh) * random_sample_pct))
         sampled = random.sample(fresh, min(sample_size, len(fresh)))
         for symbol in sampled:
@@ -107,6 +110,7 @@ def main():
     parser.add_argument("--random-sample-pct", type=float, default=0.10, help="Percentage of fresh tickers to randomly sample (default: 0.10)")
     parser.add_argument("--output", type=str, required=True, help="Output file for stale ticker list")
     parser.add_argument("--max-tickers", type=int, default=0, help="Maximum tickers to output (0=all)")
+    parser.add_argument("--random-seed", type=int, default=None, help="Random seed for reproducible sampling (default: None)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
     
@@ -127,7 +131,8 @@ def main():
         universe_df,
         stale_days=args.stale_days,
         min_quarters=args.min_quarters,
-        random_sample_pct=args.random_sample_pct
+        random_sample_pct=args.random_sample_pct,
+        random_seed=args.random_seed
     )
     
     print(f"\n📊 Staleness Analysis:")

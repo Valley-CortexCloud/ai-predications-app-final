@@ -17,8 +17,7 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime, timedelta
 import sys
-import random
-import time 
+import random 
 
 script_dir = Path(__file__).parent  # scripts/data/
 scripts_root = script_dir.parent     # scripts/
