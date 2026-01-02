@@ -10,3 +10,4 @@ lightgbm
 joblib
 pyarrow
 lxml
+alpaca-py>=0.21.0

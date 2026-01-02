@@ -48,3 +48,9 @@ data_cache/sector_map.json
 datasets/test_*.parquet
 datasets/production_features.parquet
 
+# Portfolio data (keep structure, exclude actual portfolio files)
+data/portfolio/proposed_*.csv
+data/portfolio/confirmed_*.csv
+data/portfolio/orders_*.json
+data/portfolio/fills_*.json
+
