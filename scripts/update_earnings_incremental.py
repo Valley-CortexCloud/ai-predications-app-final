@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
 Incremental earnings calendar updater using existing build_earnings_calendar.py. 
-Loads existing earnings. csv, fetches recent events (Yahoo-first! ), merges, dedupes, saves.
+Loads existing earnings.csv, fetches recent events (Yahoo-first!), merges, dedupes, saves.
 
 New batch processing features:
-- --batch-size: Process N tickers per run
-- --batch-offset: Starting offset in symbol list
+- --batch-size: Process N tickers per run (prevents timeouts)
+- --batch-offset: Starting offset in symbol list (for sequential batches)
 - --stale-list: File with stale tickers to process (one per line)
 - --stale-only: Only process tickers from stale list
-- --delay-between-symbols: Seconds to wait between symbols for rate limiting
+
+Note: Rate limiting is handled internally by build_earnings_calendar (especially for AlphaVantage).
+Batching is the primary mechanism to prevent GitHub Actions timeouts.
 """
 import argparse
 import pandas as pd
@@ -46,7 +48,6 @@ def main():
     ap.add_argument("--batch-offset", type=int, default=0, help="Starting offset in symbol list (default: 0)")
     ap.add_argument("--stale-list", type=str, default=None, help="Path to file with stale tickers (one per line)")
     ap.add_argument("--stale-only", action="store_true", help="Only process tickers from stale list")
-    ap.add_argument("--delay-between-symbols", type=float, default=0.0, help="Seconds to wait between symbols (default: 0)")
     
     args = ap.parse_args()
     
@@ -124,14 +125,7 @@ def main():
     
     print(f"Processing {len(symbols)} symbols")
     print(f"Provider order: {args.provider_order}")
-    if args.delay_between_symbols > 0:
-        estimated_time = len(symbols) * args.delay_between_symbols / 60.0
-        print(f"Estimated time with delays: ~{estimated_time:.1f} minutes")
     print(f"{'='*60}\n")
-    
-    # Note: The delay_between_symbols is currently not implemented in build_earnings_calendar
-    # The function already has internal rate limiting for AlphaVantage and other providers
-    # Batching (via batch-size/offset) is the primary mechanism to prevent timeouts
     
     # Fetch new/updated earnings using YOUR existing function
     new_df = build_earnings_calendar(

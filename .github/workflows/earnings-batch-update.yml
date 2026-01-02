@@ -87,7 +87,6 @@ jobs:
               --batch-size $BATCH_SIZE \
               --batch-offset $BATCH_OFFSET \
               --lookback-days $LOOKBACK \
-              --delay-between-symbols 2.0 \
               --provider-order yahoo,finnhub,fmp \
               --verbose
           else
@@ -98,7 +97,6 @@ jobs:
               --symbols-file config/ticker_universe.csv \
               --max-symbols 30 \
               --lookback-days $LOOKBACK \
-              --delay-between-symbols 2.0 \
               --provider-order yahoo,finnhub,fmp \
               --verbose
           fi

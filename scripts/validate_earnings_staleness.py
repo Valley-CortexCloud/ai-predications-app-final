@@ -24,6 +24,13 @@ def identify_stale_tickers(
     """
     Returns list of dicts with ticker info that needs refreshing.
     
+    Each dict contains:
+    - symbol (str): The ticker symbol
+    - reason (str): One of 'new_ticker', 'stale_date', 'low_coverage', 'random_refresh'
+    - priority (int): 1=highest (new), 2=high (stale), 3=medium (low coverage), 4=low (random)
+    - last_date (str, optional): For stale_date reason, the last earnings date
+    - quarters (int, optional): For low_coverage reason, number of recent quarters
+    
     Staleness criteria:
     1. max_earnings_date < today - stale_days
     2. < min_quarters in last 2 years
@@ -38,7 +45,7 @@ def identify_stale_tickers(
     fresh = []
     
     universe_symbols = set(universe_df['symbol'].unique())
-    earnings_symbols = set(earnings_df['symbol'].unique()) if len(earnings_df) > 0 else set()
+    earnings_symbols = set(earnings_df['symbol'].unique()) if not earnings_df.empty else set()
     
     # Check each symbol in universe
     for symbol in universe_symbols:
