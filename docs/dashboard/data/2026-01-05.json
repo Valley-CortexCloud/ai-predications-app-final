@@ -1,0 +1,50 @@
+{
+  "date": "2026-01-05",
+  "token": "dqAQtbZoch7ggX5wbIGZU92dhwc7sI6ef4t3K6LNy8w",
+  "generated": "2026-01-02T19:16:30.790958",
+  "expires": "2026-01-03T19:16:30.790963",
+  "turnover_pct": 50.0,
+  "holdings": [
+    {
+      "symbol": "NVDA",
+      "proposed_action": "SELL",
+      "reason": "Sentiment reversal on X (-40% mention sentiment). Technical breakdown below 50-day MA.",
+      "exit_score": 78,
+      "days_held": 45,
+      "pnl_pct": 12.3,
+      "entry_price": 140.5,
+      "current_price": 157.8
+    },
+    {
+      "symbol": "AAPL",
+      "proposed_action": "HOLD",
+      "reason": "Thesis intact. Momentum remains strong. iPhone 16 cycle on track.",
+      "exit_score": 35,
+      "days_held": 30,
+      "pnl_pct": 1.7,
+      "entry_price": 195.2,
+      "current_price": 198.5
+    }
+  ],
+  "recommendations": [
+    {
+      "symbol": "TSLA",
+      "proposed_action": "BUY",
+      "reason": "Strong Buy - EV demand inflection point. Robotaxi catalyst approaching.",
+      "conviction": "Strong Buy",
+      "supercharged_rank": 1
+    },
+    {
+      "symbol": "AMD",
+      "proposed_action": "BUY",
+      "reason": "Buy - AI chip demand accelerating. Data center strength.",
+      "conviction": "Buy",
+      "supercharged_rank": 2
+    }
+  ],
+  "summary": {
+    "total_sells": 1,
+    "total_buys": 2,
+    "total_holds": 1
+  }
+}
