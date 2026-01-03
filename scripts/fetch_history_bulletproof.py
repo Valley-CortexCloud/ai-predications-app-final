@@ -126,8 +126,8 @@ def resolve_universe(universe: Optional[str], tickers: Optional[str], tickers_fi
                     return []
                 
                 symbols = df[symbol_col].astype(str).str.strip().str.upper().tolist()
-                # Filter out empty and NaN values
-                symbols = [s.replace(".", "-") for s in symbols if s and s != 'NAN']
+                # Filter out empty and NaN values using pandas
+                symbols = [s.replace(".", "-") for s in symbols if s and not pd.isna(s) and s.upper() != 'NAN']
                 print(f"Loaded {len(symbols)} tickers from CSV: {p}")
                 return symbols
             except Exception as e:

@@ -27,10 +27,10 @@ def validate_structure(df: pd.DataFrame) -> list:
     
     # Required columns
     required = ['symbol', 'name', 'exchange', 'source']
-    # Case-insensitive check
-    df.columns = df.columns.str.lower()
+    # Case-insensitive check - use a copy to avoid modifying original
+    cols_lower = [c.lower() for c in df.columns]
     
-    missing = [c for c in required if c not in df.columns]
+    missing = [c for c in required if c not in cols_lower]
     if missing:
         errors.append(f"Missing required columns: {missing}")
     
@@ -95,7 +95,9 @@ def validate_yahoo_sample(df: pd.DataFrame, sample_size: int = 10, seed: int = 4
             
             # Method 1: Check fast_info (most reliable for valid tickers)
             try:
-                last_price = ticker.fast_info.get('lastPrice') or ticker.fast_info.get('previousClose')
+                last_price = ticker.fast_info.get('lastPrice')
+                if last_price is None:
+                    last_price = ticker.fast_info.get('previousClose')
                 if last_price is not None and last_price > 0:
                     valid = True
             except:
@@ -154,7 +156,7 @@ def main():
         print(f"❌ FATAL: File not found: {path}")
         return 1
     
-    # Load CSV
+    # Load CSV once
     try:
         df = pd.read_csv(path)
     except Exception as e:
@@ -174,17 +176,16 @@ def main():
     if not errors:
         print(f"  ✅ Structure OK")
     
-    # Symbol validation
+    # Symbol validation - create lowercase version for validation
     print("\n🔤 Checking symbols...")
-    # Re-read with original case
-    df = pd.read_csv(path)
-    df.columns = df.columns.str.lower()
-    errors = validate_symbols(df)
+    df_lower = df.copy()
+    df_lower.columns = df_lower.columns.str.lower()
+    errors = validate_symbols(df_lower)
     all_errors.extend(errors)
     for e in errors:
         print(f"  ❌ {e}")
     if not errors:
-        print(f"  ✅ Symbols OK ({len(df)} unique)")
+        print(f"  ✅ Symbols OK ({len(df_lower)} unique)")
     
     # Yahoo validation
     if not args.skip_yahoo:
