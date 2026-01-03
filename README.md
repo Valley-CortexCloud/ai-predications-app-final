@@ -8,14 +8,63 @@ A production-grade stock prediction system with institutional-grade data archite
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    WEEKLY DATA PIPELINE                      │
+│               UNIVERSE UPDATE (Weekly)                       │
+│           (Saturday 10 PM UTC - Before Data Refresh)         │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+    ┌───────────────────────────────────────────┐
+    │ 1. Scrape S&P 500 + NASDAQ 100            │
+    │    • Wikipedia sources                    │
+    │    • Merge and deduplicate                │
+    └───────────────────────────────────────────┘
+                            │
+                            ▼
+    ┌───────────────────────────────────────────┐
+    │ 2. Build Sector Map                       │
+    │    • GICS sectors from S&P 500            │
+    │    • Yahoo Finance lookups                │
+    │    • Save to config/sector_map.csv        │
+    └───────────────────────────────────────────┘
+                            │
+                            ▼
+    ┌───────────────────────────────────────────┐
+    │ 3. Commit Gold Files                      │
+    │    • config/ticker_universe.csv           │
+    │    • config/sector_map.csv                │
+    │    • Log added/removed tickers            │
+    └───────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│              EARNINGS REFRESH (Weekly)                       │
+│              (Sunday 2 AM UTC - Before Data Refresh)         │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+    ┌───────────────────────────────────────────┐
+    │ Update Earnings Calendar                  │
+    │    • Read config/ticker_universe.csv      │
+    │    • Incremental update (180 days)        │
+    │    • Commit data/earnings.csv             │
+    └───────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│               WEEKLY DATA REFRESH                            │
 │               (Sunday 3 AM UTC - Offline)                    │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
     ┌───────────────────────────────────────────┐
+    │ 0. VALIDATE Universe (Fail Fast)          │
+    │    • Check CSV structure                  │
+    │    • Validate symbols                     │
+    │    • Spot-check tickers                   │
+    └───────────────────────────────────────────┘
+                            │
+                            ▼
+    ┌───────────────────────────────────────────┐
     │ 1. Fetch Ticker Data (--incremental)      │
-    │    • S&P 500 + NASDAQ universe            │
+    │    • Use config/ticker_universe.csv       │
     │    • Benchmark ETFs (SPY, VIX, etc.)      │
     │    • Append only new data since last run  │
     └───────────────────────────────────────────┘
@@ -110,13 +159,13 @@ pip install -r requirements.txt
 ```bash
 # 1. Fetch ticker universe and sector mappings
 python scripts/fetch_ticker_universe.py
-python scripts/build_sector_map.py
+python scripts/build_sector_map.py --symbols-file config/ticker_universe.csv --out config/sector_map.csv
 
 # 2. Update earnings calendar
-python scripts/update_earnings_incremental.py
+python scripts/update_earnings_incremental.py --symbols-file config/ticker_universe.csv
 
 # 3. Fetch initial data (may take 30-60 min for full universe)
-python scripts/fetch_history_bulletproof.py --universe sp500 --period 2y --adjusted --out-dir data_cache/10y_ticker_features --max-workers 8
+python scripts/fetch_history_bulletproof.py --ticker-file config/ticker_universe.csv --period 2y --out-dir data_cache/10y_ticker_features --max-workers 8
 
 # 4. Augment features
 python scripts/augment_caches_fast.py --processes 4 --cache-dir data_cache/10y_ticker_features
@@ -132,7 +181,7 @@ python scripts/create_snapshot.py --features-dir data_cache/10y_ticker_features 
 
 ```bash
 # Update data incrementally (only fetches new dates)
-python scripts/fetch_history_bulletproof.py --universe sp500 --period 2y --adjusted --incremental --max-workers 8
+python scripts/fetch_history_bulletproof.py --ticker-file config/ticker_universe.csv --period 2y --incremental --max-workers 8
 python scripts/augment_caches_fast.py --incremental --processes 4
 python scripts/enhance_features_final.py --incremental --processes 4
 
@@ -158,6 +207,7 @@ python scripts/production_inference.py --snapshots-root data/snapshots --output-
 Fetch OHLCV data from yfinance with robust error handling.
 
 **Key Features:**
+- `--ticker-file`: Read tickers from CSV (e.g., `config/ticker_universe.csv`) - **RECOMMENDED**
 - `--incremental`: Append only new data since last date
 - Automatic deduplication
 - Session-aligned dates (NYSE calendar)
@@ -165,11 +215,14 @@ Fetch OHLCV data from yfinance with robust error handling.
 
 **Usage:**
 ```bash
-# Full fetch
+# RECOMMENDED: Use gold ticker universe CSV
+python scripts/fetch_history_bulletproof.py --ticker-file config/ticker_universe.csv --period 2y --incremental
+
+# Fallback: Full fetch from universe
 python scripts/fetch_history_bulletproof.py --universe sp500 --period 2y --adjusted
 
-# Incremental update (only fetch new dates)
-python scripts/fetch_history_bulletproof.py --universe sp500 --period 2y --adjusted --incremental
+# Explicit tickers
+python scripts/fetch_history_bulletproof.py --tickers "AAPL,MSFT,GOOGL" --period 5y
 ```
 
 #### `scripts/augment_caches_fast.py`
@@ -261,17 +314,40 @@ python scripts/production_inference.py --snapshots-root data/snapshots --output-
 
 ## 🤖 Automated Workflows
 
-### Weekly Data Update (`.github/workflows/update-ticker-data.yml`)
+### Universe Update (`.github/workflows/universe-update.yml`)
+**Schedule:** Saturday 10 PM UTC (before Sunday data refresh)
+
+**Steps:**
+1. Scrape S&P 500 and NASDAQ 100 from Wikipedia
+2. Merge and deduplicate into `config/ticker_universe.csv`
+3. Build sector map using GICS + Yahoo Finance
+4. Generate change summary (added/removed tickers)
+5. Auto-commit changes (no PR review needed)
+
+**Runtime:** 5-10 minutes
+
+### Earnings Refresh (`.github/workflows/earnings-refresh.yml`)
+**Schedule:** Sunday 2 AM UTC (before data refresh)
+
+**Steps:**
+1. Read `config/ticker_universe.csv` (gold file)
+2. Update earnings calendar incrementally (180 days lookback)
+3. Commit `data/earnings.csv`
+
+**Runtime:** 5-10 minutes
+
+### Weekly Data Refresh (`.github/workflows/data-refresh.yml`)
 **Schedule:** Sunday 3 AM UTC
 
 **Steps:**
-1. Update ticker universe and sector mappings
-2. Fetch data incrementally (S&P 500, NASDAQ, benchmarks)
-3. Augment features incrementally
-4. Enhance features incrementally
-5. Create snapshot
-6. Validate snapshot
-7. Commit all data to repository
+1. **Validate** `config/ticker_universe.csv` (fail fast if corrupt)
+2. Fetch price data using `--ticker-file config/ticker_universe.csv`
+3. Fetch benchmark ETFs incrementally
+4. Augment features incrementally
+5. Enhance features incrementally
+6. Create snapshot
+7. Validate snapshot
+8. Commit all data to repository
 
 **Runtime:** 30-60 minutes (offline, doesn't matter)
 
