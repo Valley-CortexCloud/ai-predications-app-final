@@ -199,8 +199,6 @@ def add_vix_regime_features(df: pd.DataFrame, vix_df: pd.DataFrame) -> pd.DataFr
     
     # Debug output
     vix_stats = df["feat_vix_level_z_63"]
-    print(f"✓ VIX features computed: mean={vix_stats.mean():.4f}, std={vix_stats.std():.4f}, min={vix_stats.min():.4f}, max={vix_stats.max():.4f}")
-    print(f"  High vol regime: {df['feat_high_vol_regime'].sum()} / {len(df)} rows ({df['feat_high_vol_regime'].sum()/len(df)*100:.1f}%)")
     
     return df
 
