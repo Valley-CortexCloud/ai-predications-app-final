@@ -103,7 +103,8 @@ def compute_baseline_features(df: pd.DataFrame) -> pd.DataFrame:
     
     # Volume and volatility
     out['avg_volume_20'] = volume.rolling(20).mean()
-    out['volatility_20'] = close.pct_change().rolling(20).std()
+    # Daily volatility - clip to reasonable bounds (1.0 = 100% daily std is extreme)
+    out['volatility_20'] = close.pct_change().rolling(20).std().clip(0, 1.0)
     
     # Simple returns
     out['ret_1d'] = close.pct_change()
@@ -135,8 +136,9 @@ def compute_multi_horizon_returns(close: pd.Series) -> pd.DataFrame:
     out['log_ret_63d'] = log_close - log_close.shift(63)
     out['log_ret_252d'] = log_close - log_close.shift(252)
     
-    # 12-month momentum skip 1 month
-    out['mom_12m_skip1m'] = out['ret_252d'] - out['ret_21d']
+    # 12-month momentum skip 1 month (clip to prevent impossible values)
+    # Can't lose more than 99%, reasonable upper bound is 10x (1000%)
+    out['mom_12m_skip1m'] = (out['ret_252d'] - out['ret_21d']).clip(-0.99, 10)
     
     # Distance to 52-week high/low
     rolling_max_252 = close.rolling(252).max()
@@ -347,22 +349,22 @@ def compute_volatility_features(open_: pd.Series, high: pd.Series, low: pd.Serie
     """
     out = pd.DataFrame(index=close.index)
     
-    # Parkinson volatility (20-day)
+    # Parkinson volatility (20-day) - clip to reasonable bounds
     hl_ratio = np.log(high / (low + 1e-12))
-    out['parkinson_20'] = np.sqrt((hl_ratio ** 2).rolling(20).mean() / (4 * np.log(2)))
+    out['parkinson_20'] = np.sqrt((hl_ratio ** 2).rolling(20).mean() / (4 * np.log(2))).clip(0, 2.0)
     
-    # Garman-Klass volatility (20-day)
+    # Garman-Klass volatility (20-day) - clip to reasonable bounds
     hl_term = 0.5 * (np.log(high / (low + 1e-12)) ** 2)
     oc_term = (2 * np.log(2) - 1) * (np.log(close / (open_ + 1e-12)) ** 2)
-    out['garman_klass_20'] = np.sqrt((hl_term - oc_term).rolling(20).mean())
+    out['garman_klass_20'] = np.sqrt((hl_term - oc_term).rolling(20).mean()).clip(0, 2.0)
     
-    # Rogers-Satchell volatility (20-day)
+    # Rogers-Satchell volatility (20-day) - clip to reasonable bounds
     hc = np.log(high / (close + 1e-12))
     ho = np.log(high / (open_ + 1e-12))
     lc = np.log(low / (close + 1e-12))
     lo = np.log(low / (open_ + 1e-12))
     rs_term = hc * ho + lc * lo
-    out['rogers_satchell_20'] = np.sqrt(rs_term.rolling(20).mean())
+    out['rogers_satchell_20'] = np.sqrt(rs_term.rolling(20).mean()).clip(0, 2.0)
     
     # ATR normalized
     prev_close = close.shift(1)
@@ -373,10 +375,10 @@ def compute_volatility_features(open_: pd.Series, high: pd.Series, low: pd.Serie
     atr_14 = tr.rolling(14).mean()
     out['atr_norm'] = atr_14 / (close + 1e-12)
     
-    # Downside volatility (20-day)
+    # Downside volatility (20-day) - clip to reasonable bounds
     returns = close.pct_change()
     downside_returns = returns.where(returns < 0, 0)
-    out['downside_vol_20'] = downside_returns.rolling(20).std()
+    out['downside_vol_20'] = downside_returns.rolling(20).std().clip(0, 1.0)
     
     return out
 
@@ -445,8 +447,11 @@ def compute_idiosyncratic_volatility(returns: pd.Series, market_returns: pd.Seri
             beta = cov / var_market
             residuals = stock_ret - beta * market_ret
             idio_vol = np.std(residuals)
+            # Clip to reasonable bounds (daily idio vol shouldn't exceed 100%)
+            idio_vol = np.clip(idio_vol, 0, 1.0)
         else:
             idio_vol = np.std(stock_ret)
+            idio_vol = np.clip(idio_vol, 0, 1.0)
         
         # FIX: use label-based assignment with .loc (aligned.index[i] is a Timestamp)
         result.loc[aligned.index[i]] = idio_vol

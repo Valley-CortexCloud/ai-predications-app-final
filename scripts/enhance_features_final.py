@@ -126,8 +126,8 @@ def add_market_relative_features(df: pd.DataFrame, spy_df: pd.DataFrame) -> pd.D
         var = y.rolling(window).var()
         return cov / var.replace(0, np.nan)
     
-    df["feat_beta_spy_126"] = rolling_beta(stock_ret, spy_ret, 126).fillna(0)
-    df["feat_beta_spy_252"] = rolling_beta(stock_ret, spy_ret, 252).fillna(0)
+    df["feat_beta_spy_126"] = rolling_beta(stock_ret, spy_ret, 126).fillna(0).clip(-5, 5)
+    df["feat_beta_spy_252"] = rolling_beta(stock_ret, spy_ret, 252).fillna(0).clip(-5, 5)
     
     def idio_vol(x, y, beta, window):
         resid = x - beta * y
