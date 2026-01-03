@@ -1,0 +1,67 @@
+name: Weekly Earnings Refresh
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'  # Sunday 2 AM UTC (before data-refresh at 3 AM)
+  workflow_dispatch:
+
+jobs:
+  refresh-earnings:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install pandas requests yfinance
+      
+      - name: Update earnings calendar
+        env:
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+        run: |
+          echo "📊 Updating earnings calendar from gold universe..."
+          python scripts/update_earnings_incremental.py \
+            --existing data/earnings.csv \
+            --output data/earnings.csv \
+            --symbols-file config/ticker_universe.csv \
+            --lookback-days 180 \
+            --provider-order yahoo,finnhub,fmp,alphavantage \
+            --verbose
+      
+      - name: Commit earnings
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add data/earnings.csv
+          
+          if git diff --staged --quiet; then
+            echo "No changes to earnings calendar"
+          else
+            ROWS=$(wc -l < data/earnings.csv)
+            SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
+            git commit -m "Weekly earnings refresh: $(date +'%Y-%m-%d') - $SYMBOLS symbols, $ROWS events"
+            git push
+          fi
+      
+      - name: Summary
+        run: |
+          echo "## 📊 Earnings Refresh Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f data/earnings.csv ]; then
+            ROWS=$(wc -l < data/earnings.csv)
+            SYMBOLS=$(tail -n +2 data/earnings.csv | cut -d',' -f1 | sort -u | wc -l)
+            echo "- **Total events:** $ROWS" >> $GITHUB_STEP_SUMMARY
+            echo "- **Symbols covered:** $SYMBOLS" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,0 +1,98 @@
+name: Universe Update (Weekly)
+
+on:
+  schedule:
+    - cron: '0 22 * * 6'  # Saturday 10 PM UTC (before Sunday data refresh)
+  workflow_dispatch:
+
+jobs:
+  update-universe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: pip install pandas requests yfinance
+      
+      - name: Backup current universe
+        run: |
+          if [ -f config/ticker_universe.csv ]; then
+            cp config/ticker_universe.csv config/ticker_universe_backup.csv
+            CURRENT_COUNT=$(tail -n +2 config/ticker_universe.csv | wc -l)
+            echo "CURRENT_COUNT=$CURRENT_COUNT" >> $GITHUB_ENV
+          else
+            echo "CURRENT_COUNT=0" >> $GITHUB_ENV
+          fi
+      
+      - name: Fetch latest universe
+        run: |
+          python scripts/fetch_ticker_universe.py \
+            --output config/ticker_universe.csv
+      
+      - name: Build sector map
+        run: |
+          python scripts/build_sector_map.py \
+            --symbols-file config/ticker_universe.csv \
+            --out config/sector_map.csv \
+            --cache-requests \
+            --with-heuristics
+      
+      - name: Generate change summary
+        run: |
+          NEW_COUNT=$(tail -n +2 config/ticker_universe.csv | wc -l)
+          echo "NEW_COUNT=$NEW_COUNT" >> $GITHUB_ENV
+          
+          if [ -f config/ticker_universe_backup.csv ]; then
+            # Find added and removed tickers
+            OLD_SYMBOLS=$(tail -n +2 config/ticker_universe_backup.csv | cut -d',' -f1 | sort)
+            NEW_SYMBOLS=$(tail -n +2 config/ticker_universe.csv | cut -d',' -f1 | sort)
+            
+            ADDED=$(comm -13 <(echo "$OLD_SYMBOLS") <(echo "$NEW_SYMBOLS") | wc -l)
+            REMOVED=$(comm -23 <(echo "$OLD_SYMBOLS") <(echo "$NEW_SYMBOLS") | wc -l)
+            
+            echo "ADDED=$ADDED" >> $GITHUB_ENV
+            echo "REMOVED=$REMOVED" >> $GITHUB_ENV
+            
+            echo "## Universe Update Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- Previous count: $CURRENT_COUNT" >> $GITHUB_STEP_SUMMARY
+            echo "- New count: $NEW_COUNT" >> $GITHUB_STEP_SUMMARY
+            echo "- Added: $ADDED" >> $GITHUB_STEP_SUMMARY
+            echo "- Removed: $REMOVED" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "$ADDED" -gt 0 ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Added Tickers:" >> $GITHUB_STEP_SUMMARY
+              comm -13 <(echo "$OLD_SYMBOLS") <(echo "$NEW_SYMBOLS") | head -20 >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ "$REMOVED" -gt 0 ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Removed Tickers:" >> $GITHUB_STEP_SUMMARY
+              comm -23 <(echo "$OLD_SYMBOLS") <(echo "$NEW_SYMBOLS") | head -20 >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            rm config/ticker_universe_backup.csv
+          fi
+      
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add config/ticker_universe.csv config/sector_map.csv
+          
+          if git diff --staged --quiet; then
+            echo "No changes to universe"
+          else
+            git commit -m "chore: update ticker universe (+${ADDED:-0}/-${REMOVED:-0})"
+            git push
+          fi

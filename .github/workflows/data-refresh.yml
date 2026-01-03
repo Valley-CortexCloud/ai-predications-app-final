@@ -1,0 +1,132 @@
+name: Weekly Data Refresh
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # Sunday 3 AM UTC
+  workflow_dispatch:
+
+jobs:
+  validate-universe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install validation deps
+        run: pip install pandas yfinance
+      
+      - name: Validate ticker universe
+        run: |
+          python scripts/validate_ticker_universe.py \
+            --file config/ticker_universe.csv \
+            --sample-size 15
+
+  refresh-data:
+    needs: validate-universe
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /usr/local/.ghcup
+          sudo docker image prune -a -f
+          sudo apt-get clean
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Show universe stats
+        run: |
+          TICKER_COUNT=$(tail -n +2 config/ticker_universe.csv | wc -l)
+          echo "📊 Fetching data for $TICKER_COUNT tickers from gold universe"
+      
+      - name: Fetch ticker price data
+        run: |
+          python scripts/fetch_history_bulletproof.py \
+            --ticker-file config/ticker_universe.csv \
+            --period 2y \
+            --out-dir data_cache/10y_ticker_features \
+            --incremental \
+            --max-workers 4
+      
+      - name: Fetch benchmark ETFs
+        run: |
+          python scripts/fetch_history_bulletproof.py \
+            --tickers "SPY,^VIX,TLT,BTC-USD,XLK,XLF,XLV,XLE,XLI,XLP,XLY,XLB,XLRE,XLU,XLC" \
+            --period 2y \
+            --out-dir data_cache/_etf_cache \
+            --incremental \
+            --max-workers 2
+      
+      - name: Augment features
+        run: |
+          python scripts/augment_caches_fast.py \
+            --processes 4 \
+            --cache-dir data_cache/10y_ticker_features \
+            --incremental
+      
+      - name: Enhance features
+        run: |
+          python scripts/enhance_features_final.py \
+            --processes 4 \
+            --cache-dir data_cache/10y_ticker_features \
+            --sector-map config/sector_map.csv \
+            --incremental
+      
+      - name: Create snapshot
+        run: |
+          python scripts/create_snapshot.py \
+            --features-dir data_cache/10y_ticker_features \
+            --output-dir data/snapshots
+      
+      - name: Validate snapshot
+        run: |
+          python scripts/validate_snapshot.py \
+            --snapshots-root data/snapshots \
+            --max-age-days 7
+      
+      - name: Commit data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add data_cache/ data/snapshots/
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Weekly data refresh: $(date +'%Y-%m-%d')"
+            git push
+          fi
+      
+      - name: Summary
+        run: |
+          echo "## 📊 Data Refresh Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          TICKER_COUNT=$(tail -n +2 config/ticker_universe.csv | wc -l)
+          echo "- **Tickers processed:** $TICKER_COUNT" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -d "data/snapshots" ]; then
+            LATEST=$(ls -t data/snapshots | head -1)
+            echo "- **Latest snapshot:** $LATEST" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ -d "data_cache" ]; then
+            SIZE=$(du -sh data_cache | cut -f1)
+            echo "- **Cache size:** $SIZE" >> $GITHUB_STEP_SUMMARY
+          fi

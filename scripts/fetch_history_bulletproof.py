@@ -107,12 +107,38 @@ def resolve_universe(universe: Optional[str], tickers: Optional[str], tickers_fi
         if not p.exists():
             print(f"Tickers file not found: {p}")
             return []
-        out = []
-        for line in p.read_text().splitlines():
-            s = line.strip()
-            if s and not s.startswith("#"):
-                out.append(s.upper().replace(".", "-"))
-        return out
+        
+        # Check if it's a CSV file
+        if p.suffix.lower() == '.csv':
+            try:
+                df = pd.read_csv(p)
+                # Look for symbol column (case-insensitive)
+                symbol_col = None
+                for col in df.columns:
+                    if col.lower() == 'symbol':
+                        symbol_col = col
+                        break
+                
+                if symbol_col is None:
+                    print(f"CSV file {p} must have a 'symbol' column")
+                    return []
+                
+                symbols = df[symbol_col].astype(str).str.strip().str.upper().tolist()
+                # Filter out empty and NaN values
+                symbols = [s.replace(".", "-") for s in symbols if s and s != 'NAN']
+                print(f"Loaded {len(symbols)} tickers from CSV: {p}")
+                return symbols
+            except Exception as e:
+                print(f"Error reading CSV file {p}: {e}")
+                return []
+        else:
+            # Plain text file - one ticker per line
+            out = []
+            for line in p.read_text().splitlines():
+                s = line.strip()
+                if s and not s.startswith("#"):
+                    out.append(s.upper().replace(".", "-"))
+            return out
     u = (universe or "").lower()
     if u == "sp500":
         return fetch_sp500_tickers()
@@ -457,7 +483,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # Universe selection
     p.add_argument("--universe", choices=["sp500", "nasdaq"], default=None, help="Universe to fetch")
     p.add_argument("--tickers", default=None, help="Comma-separated list of tickers (overrides --universe)")
-    p.add_argument("--tickers-file", default=None, help="File with one ticker per line")
+    p.add_argument("--tickers-file", "--ticker-file", dest="tickers_file", default=None, 
+                   help="File with one ticker per line, or CSV with 'symbol' column (recommended)")
     # Size controls
     p.add_argument("--limit", type=int, default=0, help="Use only first N tickers (0 = all)")
     p.add_argument("--sample", type=int, default=0, help="Random sample size from the resolved universe (0 = disabled)")

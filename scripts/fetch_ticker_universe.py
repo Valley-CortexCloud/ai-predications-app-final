@@ -75,6 +75,11 @@ def fetch_nasdaq100() -> pd.DataFrame:
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Fetch ticker universe from S&P 500 and NASDAQ 100")
+    parser.add_argument("--output", default="config/ticker_universe.csv", help="Output CSV file path")
+    args = parser.parse_args()
+    
     print("🔍 Fetching ticker universe from authoritative sources...")
     print("="*60)
     
@@ -110,7 +115,7 @@ def main():
     print(f"   Sources: {combined['source'].value_counts().to_dict()}")
     
     # Save
-    output_path = Path("config/ticker_universe.csv")
+    output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined.to_csv(output_path, index=False)
     
