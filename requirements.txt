@@ -12,3 +12,4 @@ pyarrow
 lxml
 alpaca-py>=0.21.0
 vaderSentiment>=3.3.2
+openai>=1.0.0
