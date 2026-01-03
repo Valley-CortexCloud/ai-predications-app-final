@@ -13,7 +13,7 @@ import sys
 import pytest
 import pandas as pd
 from pathlib import Path
-from tempfile import NamedTemporaryFile, TemporaryDirectory
+from tempfile import NamedTemporaryFile
 
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
@@ -32,11 +32,10 @@ class TestResolveUniverse:
             f.write("MSFT,Microsoft Corp.,NASDAQ,SP500\n")
             f.write("GOOGL,Alphabet Inc.,NASDAQ,SP500\n")
             f.flush()
+            temp_path = f.name
             
-            tickers = resolve_universe(None, None, f.name)
-            
-            # Clean up
-            Path(f.name).unlink()
+        try:
+            tickers = resolve_universe(None, None, temp_path)
             
             assert len(tickers) == 3
             assert "AAPL" in tickers
@@ -47,6 +46,8 @@ class TestResolveUniverse:
             assert "NAME" not in tickers
             assert "EXCHANGE" not in tickers
             assert "SOURCE" not in tickers
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
     
     def test_csv_with_uppercase_symbol_column(self):
         """Test CSV parsing with 'Symbol' (uppercase) column."""
@@ -55,15 +56,16 @@ class TestResolveUniverse:
             f.write("TSLA,Tesla Inc.\n")
             f.write("NVDA,NVIDIA Corp.\n")
             f.flush()
+            temp_path = f.name
             
-            tickers = resolve_universe(None, None, f.name)
-            
-            # Clean up
-            Path(f.name).unlink()
+        try:
+            tickers = resolve_universe(None, None, temp_path)
             
             assert len(tickers) == 2
             assert "TSLA" in tickers
             assert "NVDA" in tickers
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
     
     def test_csv_with_ticker_column(self):
         """Test CSV parsing with 'ticker' column instead of 'symbol'."""
@@ -72,15 +74,16 @@ class TestResolveUniverse:
             f.write("AMD,Advanced Micro Devices\n")
             f.write("INTC,Intel Corp.\n")
             f.flush()
+            temp_path = f.name
             
-            tickers = resolve_universe(None, None, f.name)
-            
-            # Clean up
-            Path(f.name).unlink()
+        try:
+            tickers = resolve_universe(None, None, temp_path)
             
             assert len(tickers) == 2
             assert "AMD" in tickers
             assert "INTC" in tickers
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
     
     def test_csv_fallback_to_first_column(self):
         """Test CSV parsing falls back to first column if no symbol column."""
@@ -89,15 +92,16 @@ class TestResolveUniverse:
             f.write("FB,Facebook\n")
             f.write("AMZN,Amazon\n")
             f.flush()
+            temp_path = f.name
             
-            tickers = resolve_universe(None, None, f.name)
-            
-            # Clean up
-            Path(f.name).unlink()
+        try:
+            tickers = resolve_universe(None, None, temp_path)
             
             assert len(tickers) == 2
             assert "FB" in tickers
             assert "AMZN" in tickers
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
     
     def test_csv_with_commas_in_data(self):
         """Test CSV parsing handles commas in company names correctly."""
@@ -106,11 +110,10 @@ class TestResolveUniverse:
             f.write("A,\"Agilent Technologies, Inc.\",NYSE,SP500\n")
             f.write("ABBV,AbbVie Inc.,NYSE,SP500\n")
             f.flush()
+            temp_path = f.name
             
-            tickers = resolve_universe(None, None, f.name)
-            
-            # Clean up
-            Path(f.name).unlink()
+        try:
+            tickers = resolve_universe(None, None, temp_path)
             
             assert len(tickers) == 2
             assert "A" in tickers
@@ -118,6 +121,8 @@ class TestResolveUniverse:
             # Should not split on commas within quoted fields
             assert "AGILENT" not in tickers
             assert "TECHNOLOGIES" not in tickers
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
     
     def test_csv_with_empty_values(self):
         """Test CSV parsing handles empty/null values."""
@@ -127,16 +132,17 @@ class TestResolveUniverse:
             f.write(",Missing Symbol\n")
             f.write("MSFT,Microsoft\n")
             f.flush()
+            temp_path = f.name
             
-            tickers = resolve_universe(None, None, f.name)
-            
-            # Clean up
-            Path(f.name).unlink()
+        try:
+            tickers = resolve_universe(None, None, temp_path)
             
             # Should skip rows with empty symbols
             assert len(tickers) == 2
             assert "AAPL" in tickers
             assert "MSFT" in tickers
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
     
     def test_txt_file_one_per_line(self):
         """Test plain text file parsing (one ticker per line)."""
@@ -148,17 +154,18 @@ class TestResolveUniverse:
             f.write("\n")  # empty line
             f.write("  TSLA  \n")  # with spaces
             f.flush()
+            temp_path = f.name
             
-            tickers = resolve_universe(None, None, f.name)
-            
-            # Clean up
-            Path(f.name).unlink()
+        try:
+            tickers = resolve_universe(None, None, temp_path)
             
             assert len(tickers) == 4
             assert "AAPL" in tickers
             assert "MSFT" in tickers
             assert "GOOGL" in tickers
             assert "TSLA" in tickers
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
     
     def test_txt_file_with_dots(self):
         """Test text file handles dots in ticker symbols (converts to dash)."""
@@ -166,15 +173,16 @@ class TestResolveUniverse:
             f.write("BRK.B\n")
             f.write("BF.B\n")
             f.flush()
+            temp_path = f.name
             
-            tickers = resolve_universe(None, None, f.name)
-            
-            # Clean up
-            Path(f.name).unlink()
+        try:
+            tickers = resolve_universe(None, None, temp_path)
             
             assert len(tickers) == 2
             assert "BRK-B" in tickers
             assert "BF-B" in tickers
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
     
     def test_explicit_tickers_parameter(self):
         """Test explicit tickers parameter (comma-separated)."""
@@ -213,15 +221,16 @@ class TestResolveUniverse:
             f.write("aapl,Apple\n")
             f.write("brk.b,Berkshire Hathaway\n")
             f.flush()
+            temp_path = f.name
             
-            tickers = resolve_universe(None, None, f.name)
-            
-            # Clean up
-            Path(f.name).unlink()
+        try:
+            tickers = resolve_universe(None, None, temp_path)
             
             assert len(tickers) == 2
             assert "AAPL" in tickers
             assert "BRK-B" in tickers
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
     
     def test_actual_ticker_universe_csv(self):
         """Test with the actual ticker_universe.csv file if it exists."""

@@ -125,7 +125,8 @@ def resolve_universe(universe: Optional[str], tickers: Optional[str], tickers_fi
                     print(f"Warning: No 'symbol' column found in {p}, using first column: {symbol_col}")
                 
                 symbols = df[symbol_col].dropna().astype(str).tolist()
-                return [s.strip().upper().replace(".", "-") for s in symbols if s.strip()]
+                # Filter out empty strings and 'nan' values
+                return [s.strip().upper().replace(".", "-") for s in symbols if s.strip() and s.lower() != 'nan']
             except Exception as e:
                 print(f"Error reading CSV {p}: {e}")
                 return []
