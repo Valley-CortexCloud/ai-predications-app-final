@@ -110,31 +110,30 @@ def resolve_universe(universe: Optional[str], tickers: Optional[str], tickers_fi
             print(f"Tickers file not found: {p}")
             return []
         
-        # Check if it's a CSV file
+        # Handle CSV files properly (read symbol column)
         if p.suffix.lower() == '.csv':
             try:
                 df = pd.read_csv(p)
-                # Look for symbol column (case-insensitive)
+                # Look for a column that could contain symbols
                 symbol_col = None
-                for col in df.columns:
-                    if col.lower() == 'symbol':
+                for col in ['symbol', 'Symbol', 'SYMBOL', 'ticker', 'Ticker', 'TICKER']:
+                    if col in df.columns:
                         symbol_col = col
                         break
                 
                 if symbol_col is None:
-                    print(f"CSV file {p} must have a 'symbol' column")
-                    return []
+                    # Fallback: use first column
+                    symbol_col = df.columns[0]
+                    print(f"Warning: No 'symbol' column found in {p}, using first column: {symbol_col}")
                 
-                symbols = df[symbol_col].astype(str).str.strip().str.upper().tolist()
-                # Filter out empty and NaN values using pandas
-                symbols = [s.replace(".", "-") for s in symbols if s and not pd.isna(s) and s.upper() != 'NAN']
-                print(f"Loaded {len(symbols)} tickers from CSV: {p}")
-                return symbols
+                symbols = df[symbol_col].dropna().astype(str).tolist()
+                # Filter out empty strings and 'nan' values
+                return [s.strip().upper().replace(".", "-") for s in symbols if s.strip() and s.lower() != 'nan']
             except Exception as e:
-                print(f"Error reading CSV file {p}: {e}")
+                print(f"Error reading CSV {p}: {e}")
                 return []
         else:
-            # Plain text file - one ticker per line
+            # Plain text file: one ticker per line
             out = []
             for line in p.read_text().splitlines():
                 s = line.strip()
