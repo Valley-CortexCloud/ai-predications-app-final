@@ -1,7 +1,7 @@
 {
   "snapshot_date": "2026-01-02",
-  "created_at": "2026-01-03T17:38:58.219279",
-  "git_commit": "004752923372d1ff61eec68a9dda3e4daa3d6cf8",
+  "created_at": "2026-01-03T19:35:38.605832",
+  "git_commit": "e694b479dd3fc61357185796a121518b64a14060",
   "symbol_count": 501,
   "feature_count": 112,
   "all_nan_columns": [],
