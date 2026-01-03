@@ -29,7 +29,7 @@ client = OpenAI(api_key=xai_key, base_url="https://api.x.ai/v1")
 # ============================================================================
 # Load Top 20
 # ============================================================================
-csv_files = glob.glob("datasets/top20_*.csv", reverse=True)
+csv_files = sorted(glob.glob("datasets/top20_*.csv"), reverse=True)
 if not csv_files:
     raise FileNotFoundError("No top20 CSV found")
 

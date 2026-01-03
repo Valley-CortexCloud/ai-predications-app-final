@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-During production validation on 2026-01-02, several calculation issues were discovered that produce impossible or extreme values in the feature engineering pipeline.
+During production validation on 2025-01-02, several calculation issues were discovered that produce impossible or extreme values in the feature engineering pipeline.
 
 ## Issues Fixed
 
@@ -117,13 +117,18 @@ else:
     idio_vol = np.clip(idio_vol, 0, 1.0)
 ```
 
-### 4. LLM Supercharge File Selection (VERIFIED ALREADY FIXED)
+### 4. LLM Supercharge File Selection (FIXED)
 **File:** `scripts/llm_supercharge.py`  
 **Location:** Line 32  
-**Status:** ✅ Already correct - `reverse=True` is present  
+**Problem:** `glob.glob()` doesn't accept `reverse` parameter  
+**Fix Applied:** Corrected to use `sorted(glob.glob(...), reverse=True)`  
 **Code:**
 ```python
+# Before (incorrect):
 csv_files = glob.glob("datasets/top20_*.csv", reverse=True)
+
+# After (correct):
+csv_files = sorted(glob.glob("datasets/top20_*.csv"), reverse=True)
 ```
 
 ## Additional Audit Findings
@@ -211,11 +216,17 @@ FEATURE CALCULATION INTEGRATION TEST SUITE:
    - Line 381: Downside volatility clipping
    - Lines 450-453: Idiosyncratic volatility clipping
 
-3. **`test_calculation_bounds.py`** (new)
+3. **`scripts/llm_supercharge.py`**
+   - Line 32: Fixed glob.glob() to use sorted() with reverse=True
+
+4. **`test_calculation_bounds.py`** (new)
    - Unit tests for clipping behavior
 
-4. **`test_feature_integration.py`** (new)
+5. **`test_feature_integration.py`** (new)
    - Integration tests with realistic data
+
+6. **`CALCULATION_FIX_SUMMARY.md`** (new)
+   - Comprehensive documentation of all fixes
 
 ## Validation Checklist
 
@@ -223,7 +234,7 @@ FEATURE CALCULATION INTEGRATION TEST SUITE:
 - [x] Momentum values clipped to [-0.99, 10] range
 - [x] Volatility values validated and clipped appropriately
 - [x] All division operations protected against zero/near-zero denominators
-- [x] LLM supercharge file selection verified (already correct)
+- [x] LLM supercharge file selection fixed (sorted with reverse=True)
 - [x] Unit tests created and passing
 - [x] Integration tests created and passing
 - [x] All changes are minimal and surgical
