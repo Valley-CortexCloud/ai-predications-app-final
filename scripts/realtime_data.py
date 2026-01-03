@@ -289,10 +289,14 @@ def print_data_validation(data: Dict) -> None:
     age_status = "✓" if age <= 1 else "⚠" if age <= 5 else "✗"
     tech_status = "✓" if data['rsi'] is not None and data['macd'] is not None else "⚠"
     
+    # Safe formatting for potentially None values
+    rsi_str = f"{data['rsi']:.1f}" if data['rsi'] is not None else 'N/A'
+    macd_str = f"{data['macd']:.2f}" if data['macd'] is not None else 'N/A'
+    atr_str = f"${data['atr']:.2f}" if data['atr'] is not None else 'N/A'
+    
     print(f"[{symbol}] Fetching data...")
     print(f"  {price_status} Price data: ${price:.2f} (as of {date}, {age} day(s) old)")
-    print(f"  {tech_status} Technicals computed: RSI={data['rsi']:.1f if data['rsi'] else 'N/A'}, "
-          f"MACD={data['macd']:.2f if data['macd'] else 'N/A'}, ATR=${data['atr']:.2f if data['atr'] else 'N/A'}")
+    print(f"  {tech_status} Technicals computed: RSI={rsi_str}, MACD={macd_str}, ATR={atr_str}")
     print(f"  {age_status} Data quality: {quality}")
 
 

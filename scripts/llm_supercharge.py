@@ -57,7 +57,7 @@ realtime_data_directive = """
 CRITICAL: Real-time market data is provided above for this stock.
 - Use ONLY the provided price/technical data - do not estimate or recall from training data
 - All technical indicators (RSI, MACD, ATR, etc.) are computed from live data - trust these values
-- For X/Twitter sentiment, you may search X to supplement the provided sentiment data
+- Sentiment data from StockTwits is provided; you may search X/Twitter to supplement this data
 - If data appears stale (>1 day old), note this in your analysis
 - All numerical claims about current price, technicals, and volume MUST match the provided data
 """

@@ -23,6 +23,9 @@ import json
 _SENTIMENT_CACHE = {}
 _CACHE_TTL = 3600  # 1 hour in seconds
 
+# Default neutral sentiment ratio when no data is available
+DEFAULT_NEUTRAL_RATIO = 0.5  # 0.5 represents equal bullish/bearish sentiment (neutral)
+
 
 def fetch_stocktwits_sentiment(symbol: str, max_retries: int = 2) -> Optional[Dict]:
     """Fetch sentiment data from StockTwits API.
@@ -86,7 +89,7 @@ def fetch_stocktwits_sentiment(symbol: str, max_retries: int = 2) -> Optional[Di
                         neutral += 1
                 
                 total = bullish + bearish + neutral
-                sentiment_ratio = bullish / total if total > 0 else 0.5
+                sentiment_ratio = bullish / total if total > 0 else DEFAULT_NEUTRAL_RATIO
                 
                 result = {
                     'messages': messages[:10],  # Keep only recent 10 for reference

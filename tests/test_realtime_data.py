@@ -122,13 +122,15 @@ def test_compute_sma():
 def test_fetch_realtime_data_structure():
     """Test that fetch_realtime_data returns correct structure."""
     with patch('realtime_data.yf.Ticker') as mock_ticker:
-        # Mock yfinance response
+        # Mock yfinance response with recent historical data
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=300)
         mock_hist = pd.DataFrame({
             'Close': [100] * 300,
             'High': [102] * 300,
             'Low': [98] * 300,
             'Volume': [1000000] * 300
-        }, index=pd.date_range(start='2025-01-01', periods=300, freq='D'))
+        }, index=pd.date_range(start=start_date, periods=300, freq='D'))
         
         mock_ticker_instance = Mock()
         mock_ticker_instance.history.return_value = mock_hist
@@ -165,10 +167,13 @@ def test_fetch_realtime_data_empty_history():
 
 def test_format_technical_data():
     """Test formatting of technical data for LLM prompt."""
+    # Use recent date to make test robust over time
+    recent_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    
     test_data = {
         'symbol': 'TEST',
         'price': 100.50,
-        'date': '2026-01-02',
+        'date': recent_date,
         'age_days': 1,
         'rsi': 65.5,
         'macd': 2.5,
@@ -201,10 +206,12 @@ def test_format_technical_data():
 
 def test_format_technical_data_with_none_values():
     """Test formatting handles None values gracefully."""
+    recent_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    
     test_data = {
         'symbol': 'TEST',
         'price': 100.50,
-        'date': '2026-01-02',
+        'date': recent_date,
         'age_days': 1,
         'rsi': None,
         'macd': None,
