@@ -39,15 +39,17 @@ def create_realistic_ohlcv_data(days=500):
     
     prices = 100 * np.exp(np.cumsum(returns))
     
-    # Generate OHLC from close prices
+    # Generate OHLC from close prices with proper relationships
     df = pd.DataFrame(index=dates)
     df['Close'] = prices
     df['Adj Close'] = prices  # Assume no dividends for simplicity
-    
-    # Add realistic intraday range
-    df['High'] = df['Close'] * np.random.uniform(1.00, 1.02, days)
-    df['Low'] = df['Close'] * np.random.uniform(0.98, 1.00, days)
     df['Open'] = df['Close'].shift(1).fillna(100) * np.random.uniform(0.99, 1.01, days)
+    
+    # Ensure High is max of Open/Close + random, Low is min of Open/Close - random
+    max_oc = np.maximum(df['Open'], df['Close'])
+    min_oc = np.minimum(df['Open'], df['Close'])
+    df['High'] = max_oc * np.random.uniform(1.00, 1.02, days)
+    df['Low'] = min_oc * np.random.uniform(0.98, 1.00, days)
     
     # Add volume
     df['Volume'] = np.random.randint(1_000_000, 10_000_000, days)
@@ -192,10 +194,11 @@ def test_extreme_market_conditions():
     dates = pd.date_range('2020-01-01', periods=300, freq='D')
     df = pd.DataFrame(index=dates)
     
-    # Simulate a 90% crash over 30 days
+    # Simulate a 90% crash over 30 days (exponential decline)
     prices = [100.0] * 100  # Stable period
     for i in range(30):
-        prices.append(100 * (1 - 0.03 * i))  # 90% crash
+        # Exponential crash: 100 * (0.1)^(i/29) goes from 100 to ~10
+        prices.append(100 * (0.1) ** (i / 29))
     prices.extend([10.0] * 170)  # Post-crash period
     
     df['Close'] = prices
