@@ -63,9 +63,9 @@ jobs:
           git config --local user.name "github-actions[bot]"
           
           # Add proposed file, dashboard data, and tokens
-          git add data/portfolio/proposed_*.csv
-          git add data/portfolio/tokens/*.json
-          git add docs/dashboard/data/*.json
+          git add -f data/portfolio/proposed_*.csv
+          git add -f data/portfolio/tokens/*.json
+          git add -f docs/dashboard/data/*.json
           
           # Check if there are changes
           if git diff --staged --quiet; then
