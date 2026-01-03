@@ -1,0 +1,120 @@
+{
+  "date": "2026-01-03",
+  "token": "KqLGvXGdY4sO9BLAkl7KAGXxOuKVhUvqDaqmVYyUXv4",
+  "generated": "2026-01-03T22:58:06.940645",
+  "expires": "2026-01-04T22:58:06.940650",
+  "turnover_pct": 0.0,
+  "holdings": [],
+  "recommendations": [
+    {
+      "symbol": "PLTR",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #2, Strong Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "HOOD",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #3, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "MPWR",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #4, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "KLAC",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #6, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "NEM",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #7, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "AMAT",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #7, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "APP",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #7, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "LRCX",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #8, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "CSX",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #9, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "EL",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #12, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "FCX",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #12, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "STX",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #14, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "AMD",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #14, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "DVN",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #15, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "UAL",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #16, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    }
+  ],
+  "summary": {
+    "total_sells": 0,
+    "total_buys": 15,
+    "total_holds": 0
+  }
+}
