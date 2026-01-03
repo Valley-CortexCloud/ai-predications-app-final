@@ -8,6 +8,15 @@ import glob
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
+# Import real-time data modules
+try:
+    from realtime_data import fetch_realtime_data, format_technical_data, print_data_validation
+    from sentiment_analyzer import fetch_and_analyze_sentiment, format_sentiment_data, print_sentiment_validation
+    REALTIME_ENABLED = True
+except ImportError:
+    REALTIME_ENABLED = False
+    print("⚠️  Real-time data modules not available - running in legacy mode")
+
 # ============================================================================
 # API Setup
 # ============================================================================
@@ -44,6 +53,15 @@ HALLUCINATION PREVENTION (CRITICAL):
 - Your edge is logic + pattern recognition — not fabricating news.
 """
 
+realtime_data_directive = """
+CRITICAL: Real-time market data is provided above for this stock.
+- Use ONLY the provided price/technical data - do not estimate or recall from training data
+- All technical indicators (RSI, MACD, ATR, etc.) are computed from live data - trust these values
+- For X/Twitter sentiment, you may search X to supplement the provided sentiment data
+- If data appears stale (>1 day old), note this in your analysis
+- All numerical claims about current price, technicals, and volume MUST match the provided data
+"""
+
 # ============================================================================
 # ELITE SYSTEM PROMPT (FULL POWER)
 # ============================================================================
@@ -57,6 +75,8 @@ Rules (OBEY STRICTLY):
 - Supercharged_rank:  your final 1-20 ranking (1 = highest expected 63-day risk-adjusted alpha).
 
 """ + hallucination_guard + """
+
+""" + realtime_data_directive + """
 
 For this stock: 
 1.  Recall original quant signals (low vol, earnings momentum, quality).
@@ -85,12 +105,35 @@ Example output:
 Now analyze THIS stock for maximum 63-day alpha."""
 
 # ============================================================================
-# Single Stock Analysis (ELITE PROMPT, WITH RETRY)
+# Single Stock Analysis (ELITE PROMPT, WITH RETRY + REAL-TIME DATA)
 # ============================================================================
 def analyze_stock(idx, symbol, original_rank, max_retries=2):
-    """Analyze one stock with full elite prompt and retry logic"""
+    """Analyze one stock with full elite prompt, real-time data, and retry logic"""
     
-    user_prompt = f"""Stock to analyze: 
+    # Fetch real-time data if enabled
+    realtime_data = None
+    sentiment_data = None
+    
+    if REALTIME_ENABLED:
+        try:
+            realtime_data = fetch_realtime_data(symbol)
+            sentiment_data = fetch_and_analyze_sentiment(symbol)
+        except Exception as e:
+            print(f"  ⚠️  {symbol}: Real-time data fetch error - {str(e)[:60]}")
+    
+    # Build user prompt with real-time data
+    user_prompt_parts = []
+    
+    # Add real-time technical data if available
+    if realtime_data:
+        user_prompt_parts.append(format_technical_data(realtime_data))
+    
+    # Add sentiment data if available
+    if sentiment_data:
+        user_prompt_parts.append(format_sentiment_data(sentiment_data))
+    
+    # Add base context
+    base_context = f"""Stock to analyze: 
 Symbol: {symbol}
 Original Quant Rank: #{original_rank} (out of 20)
 
@@ -100,6 +143,9 @@ Context: This stock was ranked #{original_rank} by our 120-feature quant model b
 - Risk-adjusted returns + technical breakouts
 
 Your mission:  Supercharge this ranking using real-time intelligence and asymmetric opportunity identification for 63-day horizon."""
+    
+    user_prompt_parts.append(base_context)
+    user_prompt = "\n\n".join(user_prompt_parts)
     
     for attempt in range(max_retries + 1):
         try:
@@ -181,7 +227,40 @@ total_tokens = 0
 
 print(f"{'='*60}")
 print(f"PROCESSING 20 STOCKS (ELITE GROK-4 ANALYSIS)")
+if REALTIME_ENABLED:
+    print(f"REAL-TIME DATA: ENABLED ✓")
+else:
+    print(f"REAL-TIME DATA: DISABLED (legacy mode)")
 print(f"{'='*60}\n")
+
+# Pre-fetch and validate real-time data for all stocks (with progress indication)
+if REALTIME_ENABLED:
+    print(f"{'='*60}")
+    print("📊 REAL-TIME DATA PREFETCH")
+    print(f"{'='*60}")
+    
+    for idx, row in stocks.iterrows():
+        symbol = row['symbol']
+        print(f"[{symbol}] Fetching data...")
+        
+        # Fetch data
+        realtime_data = fetch_realtime_data(symbol)
+        sentiment_data = fetch_and_analyze_sentiment(symbol)
+        
+        # Print validation
+        if realtime_data:
+            print_data_validation(realtime_data)
+        else:
+            print(f"  ✗ Price data: unavailable")
+        
+        if sentiment_data:
+            print_sentiment_validation(symbol, sentiment_data)
+        else:
+            print(f"  ✗ Sentiment: unavailable")
+        
+        print(f"{'='*60}")
+    
+    print()
 
 with ThreadPoolExecutor(max_workers=8) as executor:
     # Submit all jobs
