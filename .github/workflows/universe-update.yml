@@ -20,7 +20,7 @@ jobs:
           python-version: '3.12'
       
       - name: Install dependencies
-        run: pip install pandas requests yfinance
+        run: pip install pandas requests yfinance lxml
       
       - name: Backup current universe
         run: |
