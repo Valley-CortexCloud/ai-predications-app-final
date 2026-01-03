@@ -1,0 +1,14 @@
+{
+  "run_date": "2026-01-03",
+  "run_time": "2026-01-03T18:30:19.884571",
+  "num_stocks": 20,
+  "successful": 20,
+  "failed": 0,
+  "total_api_cost_usd": 0.1598,
+  "total_tokens": 58879,
+  "avg_cost_per_stock": 0.008,
+  "grok_upgrades": 9,
+  "grok_downgrades": 11,
+  "major_upgrades_5plus": 0,
+  "major_downgrades_5plus": 2
+}
