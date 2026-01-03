@@ -164,7 +164,12 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          git add data/portfolio/
+          # Force add files that may be ignored by .gitignore
+          git add -f data/portfolio/confirmed_*.csv
+          git add -f data/portfolio/orders_*.json
+          git add -f data/portfolio/fills_*.json
+          git add -f data/portfolio/tokens/*.json
+          git add data/portfolio/tracker.csv
           
           if git diff --staged --quiet; then
             echo "No changes to commit"

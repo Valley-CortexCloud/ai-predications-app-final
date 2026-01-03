@@ -101,7 +101,7 @@ def generate_orders(
     orders = []
     
     # Process SELL orders first (free up capital)
-    sells = confirmed_df[confirmed_df['action'] == 'SELL']
+    sells = confirmed_df[confirmed_df['proposed_action'] == 'SELL']
     
     for _, row in sells.iterrows():
         symbol = row['symbol']
@@ -127,7 +127,7 @@ def generate_orders(
         print(f"📤 SELL: {symbol} - {shares} shares")
     
     # Process BUY orders
-    buys = confirmed_df[confirmed_df['action'] == 'BUY']
+    buys = confirmed_df[confirmed_df['proposed_action'] == 'BUY']
     
     for _, row in buys.iterrows():
         symbol = row['symbol']

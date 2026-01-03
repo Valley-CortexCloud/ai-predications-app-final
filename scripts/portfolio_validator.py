@@ -252,7 +252,7 @@ def apply_exit_rules(
         
         results.append({
             'symbol': symbol,
-            'action': action,
+            'proposed_action': action,
             'exit_score': exit_score,
             'days_held': days_held,
             'reason': reason,
@@ -263,7 +263,7 @@ def apply_exit_rules(
     proposed = pd.DataFrame(results)
     
     # Enforce turnover constraint
-    sell_count = (proposed['action'] == 'SELL').sum()
+    sell_count = (proposed['proposed_action'] == 'SELL').sum()
     total_positions = len(proposed)
     
     if total_positions > 0:
@@ -275,12 +275,12 @@ def apply_exit_rules(
             
             # Keep only top exits by score
             max_sells = int(total_positions * max_turnover)
-            sells = proposed[proposed['action'] == 'SELL'].nlargest(max_sells, 'exit_score')
+            sells = proposed[proposed['proposed_action'] == 'SELL'].nlargest(max_sells, 'exit_score')
             
             # Mark others as WATCH
             proposed.loc[
-                (proposed['action'] == 'SELL') & (~proposed.index.isin(sells.index)), 
-                'action'
+                (proposed['proposed_action'] == 'SELL') & (~proposed.index.isin(sells.index)), 
+                'proposed_action'
             ] = 'WATCH'
     
     return proposed
@@ -299,7 +299,7 @@ def add_buy_recommendations(
         return proposed
     
     # How many slots are available?
-    sell_count = (proposed['action'] == 'SELL').sum()
+    sell_count = (proposed['proposed_action'] == 'SELL').sum()
     current_count = len(current_holdings)
     available_slots = max_positions - current_count + sell_count
     
@@ -317,7 +317,7 @@ def add_buy_recommendations(
     for _, row in candidates.iterrows():
         buy_recs.append({
             'symbol': row['symbol'],
-            'action': 'BUY',
+            'proposed_action': 'BUY',
             'exit_score': 0,
             'days_held': 0,
             'reason': f"Fresh signal - Rank #{row.get('supercharged_rank', 'N/A')}, {row.get('conviction', 'N/A')}",
@@ -363,14 +363,14 @@ def validate_portfolio(
         supercharged = load_latest_supercharged(datasets_dir)
         if supercharged is not None:
             proposed = add_buy_recommendations(
-                pd.DataFrame(columns=['symbol', 'action', 'exit_score', 'days_held', 'reason', 'evidence', 'replacement']),
+                pd.DataFrame(columns=['symbol', 'proposed_action', 'exit_score', 'days_held', 'reason', 'evidence', 'replacement']),
                 supercharged,
                 [],
                 MAX_POSITIONS
             )
         else:
             print("⚠️  No supercharged data available")
-            proposed = pd.DataFrame(columns=['symbol', 'action', 'exit_score', 'days_held', 'reason', 'evidence', 'replacement'])
+            proposed = pd.DataFrame(columns=['symbol', 'proposed_action', 'exit_score', 'days_held', 'reason', 'evidence', 'replacement'])
     else:
         print(f"📊 Analyzing {len(tracker)} holdings...")
         print(f"\nCurrent holdings:")
@@ -445,7 +445,7 @@ def validate_portfolio(
     print(f"\n💾 Saved to: {output_path}")
     
     # Summary
-    action_counts = proposed['action'].value_counts()
+    action_counts = proposed['proposed_action'].value_counts()
     print(f"\n📊 Summary:")
     for action, count in action_counts.items():
         print(f"   {action}: {count}")
