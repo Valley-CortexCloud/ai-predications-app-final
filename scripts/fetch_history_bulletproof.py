@@ -3,7 +3,9 @@
 Fetch reliable daily OHLCV for many tickers, aligned to NYSE sessions (no off-by-one drift).
 
 Key behavior:
-- Universe selection: sp500, nasdaq, explicit --tickers list, or --tickers-file
+- Universe selection: 
+  * RECOMMENDED: --ticker-file with CSV containing 'symbol' column (e.g., config/ticker_universe.csv)
+  * FALLBACK: --universe sp500/nasdaq, explicit --tickers list, or text file with --tickers-file
 - Limit or random sample
 - Parallel downloads with retries and resume
 - Adjusted or unadjusted Close (default: RAW; only sets Close=Adj Close when --adjusted is provided)
@@ -14,17 +16,17 @@ Key behavior:
 - Non-blocking sanity cross-check against Yahoo for last few bars (warns but does not fail run)
 
 Examples:
-  # S&P 500, adjusted, parallel, resume:
-  python3 scripts/fetch_universe_history.py --universe sp500 --period 5y --adjusted --max-workers 8
+  # RECOMMENDED: Use gold ticker universe CSV:
+  python3 scripts/fetch_history_bulletproof.py --ticker-file config/ticker_universe.csv --period 2y --incremental
 
-  # NASDAQ, unadjusted, first 30:
-  python3 scripts/fetch_universe_history.py --universe nasdaq --period 5y --limit 30
+  # S&P 500 fallback (not recommended for production):
+  python3 scripts/fetch_history_bulletproof.py --universe sp500 --period 5y --adjusted --max-workers 8
 
   # Explicit tickers (20), random sample of 10:
-  python3 scripts/fetch_universe_history.py --tickers AAPL,MSFT,GOOGL,META,NVDA,AMZN,TSLA,AVGO,PEP,KO,JPM,V,MA,HD,COST,LIN,MRK,LLY,UNH,ORCL --sample 10 --seed 42
+  python3 scripts/fetch_history_bulletproof.py --tickers AAPL,MSFT,GOOGL,META,NVDA,AMZN,TSLA,AVGO,PEP,KO,JPM,V,MA,HD,COST,LIN,MRK,LLY,UNH,ORCL --sample 10 --seed 42
 
-  # From file, overwrite existing:
-  python3 scripts/fetch_universe_history.py --tickers-file tickers.txt --overwrite
+  # From text file with one ticker per line:
+  python3 scripts/fetch_history_bulletproof.py --tickers-file tickers.txt --overwrite
 """
 import argparse
 import concurrent.futures
@@ -482,8 +484,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # Universe selection
     p.add_argument("--universe", choices=["sp500", "nasdaq"], default=None, help="Universe to fetch")
     p.add_argument("--tickers", default=None, help="Comma-separated list of tickers (overrides --universe)")
-    p.add_argument("--ticker-file", "--tickers-file", dest="tickers_file", default=None, 
-                   help="CSV or text file with tickers (for CSV, reads 'symbol' column)")
+    p.add_argument("--tickers-file", "--ticker-file", dest="tickers_file", default=None, 
+                   help="File with one ticker per line, or CSV with 'symbol' column (recommended)")
     # Size controls
     p.add_argument("--limit", type=int, default=0, help="Use only first N tickers (0 = all)")
     p.add_argument("--sample", type=int, default=0, help="Random sample size from the resolved universe (0 = disabled)")
