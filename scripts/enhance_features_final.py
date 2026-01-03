@@ -28,6 +28,8 @@ import logging
 from typing import Optional, Dict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+pd.options.mode.chained_assignment = None  # Suppress SettingWithCopyWarning
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from pathlib import Path
 
