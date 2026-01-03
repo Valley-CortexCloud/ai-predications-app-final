@@ -1,4 +1,4 @@
-name: Update Universe & Earnings (Manual Full Rebuild)
+name: OLD - Update Universe & Earnings (Manual Full Rebuild)
 
 # ⚠️ WARNING: This workflow processes ALL 517+ tickers and may timeout in GitHub Actions
 # For scheduled updates, use the new batch processing system:
