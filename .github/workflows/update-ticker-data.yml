@@ -50,21 +50,6 @@ jobs:
             --cache-requests \
             --with-heuristics
 
-      - name: Update earnings calendar
-        run: |
-          echo "📊 Updating earnings calendar..."
-          python3 scripts/update_earnings_incremental.py \
-            --existing data/earnings.csv \
-            --output data/earnings.csv \
-            --symbols-file config/ticker_universe.csv \
-            --lookback-days 1095 \
-            --provider-order yahoo,finnhub,fmp,alphavantage \
-            --verbose
-        env:
-          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
-          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
-          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
-                    
       - name: Fetch ticker data (incremental)
         run: |
           # Fetch S&P 500 and NASDAQ (incremental mode)
