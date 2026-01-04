@@ -34,7 +34,7 @@ if not DASHBOARD_BASE_URL or DASHBOARD_BASE_URL == 'https://portfolio-dashboard.
     print("   Dashboard links in output will not work properly")
     print("   Set DASHBOARD_URL environment variable to your Cloudflare Worker URL")
     print("   See cloudflare-worker/SETUP.md for deployment instructions")
-    DASHBOARD_BASE_URL = "YOUR_CLOUDFLARE_WORKER_URL"
+    DASHBOARD_BASE_URL = "https://portfolio-dashboard.alpha-work.workers.dev"
 
 
 # ============================================================================
