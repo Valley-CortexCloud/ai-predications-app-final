@@ -18,6 +18,10 @@
 const DEFAULT_TOKEN_PATH = "data/portfolio/tokens";
 const DEFAULT_DATA_PATH = "docs/dashboard/data";
 const DEFAULT_BRANCH = "main";
+
+// Date pattern for basic format validation (YYYY-MM-DD)
+// Note: This only validates format, not date validity. Invalid dates like
+// '2025-13-99' will be caught by GitHub when the file doesn't exist.
 const DATE_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 
 // ============================================================================
@@ -559,8 +563,18 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 
 /**
  * Set CORS headers for browser requests
- * Note: Using wildcard '*' for simplicity. In production, consider restricting
- * to specific domains if you know the dashboard will only be accessed from certain origins.
+ * 
+ * Note: Using wildcard '*' for Access-Control-Allow-Origin for simplicity.
+ * This is acceptable for this use case because:
+ * 1. The API requires valid security tokens for all operations
+ * 2. Tokens expire after 24 hours and can only be used once
+ * 3. The dashboard is only used by the repository owner
+ * 4. Data is already validated server-side
+ * 
+ * For production use with multiple users or sensitive operations, consider:
+ * - Restricting to specific domains
+ * - Implementing dynamic origin validation
+ * - Using environment variable for allowed origins
  */
 function setCorsHeaders(response, allowOrigin = '*') {
   response.headers.set('Access-Control-Allow-Origin', allowOrigin);
