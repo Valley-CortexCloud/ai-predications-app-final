@@ -29,7 +29,16 @@ import pandas as pd
 # Configuration
 # ============================================================================
 
-DASHBOARD_BASE_URL = "https://valley-cortexcloud.github.io/ai-predications-app-final/dashboard"
+# Get dashboard URL from environment variable
+# Set this in your environment or in .github/workflows/portfolio-validation.yml
+DASHBOARD_BASE_URL = os.environ.get('DASHBOARD_URL')
+if not DASHBOARD_BASE_URL or DASHBOARD_BASE_URL == 'YOUR_CLOUDFLARE_WORKER_URL':
+    print("⚠️  WARNING: DASHBOARD_URL not set or using placeholder")
+    print("   Dashboard links in emails will not work properly")
+    print("   Set DASHBOARD_URL environment variable to your Cloudflare Worker URL")
+    print("   See cloudflare-worker/SETUP.md for deployment instructions")
+    DASHBOARD_BASE_URL = "YOUR_CLOUDFLARE_WORKER_URL"
+
 TOKEN_EXPIRY_HOURS = 24
 
 

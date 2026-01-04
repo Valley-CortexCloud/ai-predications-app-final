@@ -1,0 +1,23 @@
+name = "portfolio-dashboard"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Public environment variables (non-sensitive)
+[vars]
+GITHUB_OWNER = "Valley-CortexCloud"
+GITHUB_REPO = "ai-predications-app-final"
+GITHUB_BRANCH = "main"
+
+# Optional: Override default paths if repository structure changes
+# TOKEN_PATH = "data/portfolio/tokens"
+# DATA_PATH = "docs/dashboard/data"
+
+# Secrets should be added via: wrangler secret put GITHUB_PAT
+# Do NOT add secrets directly to this file
+#
+# Required secrets:
+# - GITHUB_PAT: Personal Access Token with 'repo' and 'actions' scope
+#
+# To add the secret:
+# $ wrangler secret put GITHUB_PAT
+# (then paste your GitHub PAT when prompted)

@@ -54,3 +54,8 @@ data/portfolio/confirmed_*.csv
 data/portfolio/orders_*.json
 data/portfolio/fills_*.json
 
+# Cloudflare Workers
+cloudflare-worker/.wrangler/
+cloudflare-worker/node_modules/
+cloudflare-worker/.mf/
+
