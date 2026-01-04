@@ -8,7 +8,15 @@
  * - GITHUB_PAT: GitHub Personal Access Token with repo and actions scope
  * - GITHUB_OWNER: Repository owner (e.g., "Valley-CortexCloud")
  * - GITHUB_REPO: Repository name (e.g., "ai-predications-app-final")
+ * 
+ * Optional Environment Variables:
+ * - TOKEN_PATH: Path to token files (default: "data/portfolio/tokens")
+ * - DATA_PATH: Path to dashboard data files (default: "docs/dashboard/data")
  */
+
+// Configuration - can be overridden via environment variables
+const DEFAULT_TOKEN_PATH = "data/portfolio/tokens";
+const DEFAULT_DATA_PATH = "docs/dashboard/data";
 
 // ============================================================================
 // Dashboard HTML Template
@@ -590,8 +598,11 @@ function errorResponse(message, status = 400) {
  */
 async function validateToken(env, date, token) {
   try {
+    // Get token path from environment or use default
+    const tokenPath = env.TOKEN_PATH || DEFAULT_TOKEN_PATH;
+    
     // Fetch token data from GitHub
-    const tokenUrl = `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/main/data/portfolio/tokens/${date}.json`;
+    const tokenUrl = `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/main/${tokenPath}/${date}.json`;
     
     const response = await fetch(tokenUrl, {
       headers: {
@@ -724,9 +735,12 @@ async function handleGetData(env, request, date) {
       return errorResponse(validation.error, 403);
     }
     
+    // Get data path from environment or use default
+    const dataPath = env.DATA_PATH || DEFAULT_DATA_PATH;
+    
     // Fetch dashboard data from GitHub
-    const dataPath = `docs/dashboard/data/${date}.json`;
-    const response = await fetchFromGitHub(env, dataPath);
+    const fullDataPath = `${dataPath}/${date}.json`;
+    const response = await fetchFromGitHub(env, fullDataPath);
     const data = await response.json();
     
     // Return data

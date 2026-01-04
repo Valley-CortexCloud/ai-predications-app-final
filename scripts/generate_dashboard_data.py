@@ -24,7 +24,16 @@ import pandas as pd
 # ============================================================================
 
 TOKEN_EXPIRY_HOURS = 24
-DASHBOARD_BASE_URL = os.environ.get('DASHBOARD_URL', 'YOUR_CLOUDFLARE_WORKER_URL')
+
+# Get dashboard URL from environment variable
+# Set this in your environment or in .github/workflows/portfolio-validation.yml
+DASHBOARD_BASE_URL = os.environ.get('DASHBOARD_URL')
+if not DASHBOARD_BASE_URL or DASHBOARD_BASE_URL == 'YOUR_CLOUDFLARE_WORKER_URL':
+    print("⚠️  WARNING: DASHBOARD_URL not set or using placeholder")
+    print("   Dashboard links in output will not work properly")
+    print("   Set DASHBOARD_URL environment variable to your Cloudflare Worker URL")
+    print("   See cloudflare-worker/SETUP.md for deployment instructions")
+    DASHBOARD_BASE_URL = "YOUR_CLOUDFLARE_WORKER_URL"
 
 
 # ============================================================================
