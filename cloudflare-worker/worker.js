@@ -17,6 +17,8 @@
 // Configuration - can be overridden via environment variables
 const DEFAULT_TOKEN_PATH = "data/portfolio/tokens";
 const DEFAULT_DATA_PATH = "docs/dashboard/data";
+const DEFAULT_BRANCH = "main";
+const DATE_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 
 // ============================================================================
 // Dashboard HTML Template
@@ -557,9 +559,11 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 
 /**
  * Set CORS headers for browser requests
+ * Note: Using wildcard '*' for simplicity. In production, consider restricting
+ * to specific domains if you know the dashboard will only be accessed from certain origins.
  */
-function setCorsHeaders(response) {
-  response.headers.set('Access-Control-Allow-Origin', '*');
+function setCorsHeaders(response, allowOrigin = '*') {
+  response.headers.set('Access-Control-Allow-Origin', allowOrigin);
   response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   response.headers.set('Access-Control-Allow-Headers', 'Content-Type');
   return response;
@@ -600,9 +604,10 @@ async function validateToken(env, date, token) {
   try {
     // Get token path from environment or use default
     const tokenPath = env.TOKEN_PATH || DEFAULT_TOKEN_PATH;
+    const branch = env.GITHUB_BRANCH || DEFAULT_BRANCH;
     
     // Fetch token data from GitHub
-    const tokenUrl = `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/main/${tokenPath}/${date}.json`;
+    const tokenUrl = `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${branch}/${tokenPath}/${date}.json`;
     
     const response = await fetch(tokenUrl, {
       headers: {
@@ -645,7 +650,8 @@ async function validateToken(env, date, token) {
  * Fetch data from private GitHub repository
  */
 async function fetchFromGitHub(env, path) {
-  const url = `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/main/${path}`;
+  const branch = env.GITHUB_BRANCH || DEFAULT_BRANCH;
+  const url = `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${branch}/${path}`;
   
   const response = await fetch(url, {
     headers: {
@@ -829,7 +835,7 @@ export default {
       }
       
       // Route: GET /api/data/:date -> Fetch portfolio data
-      const dataMatch = path.match(/^\/api\/data\/([0-9]{4}-[0-9]{2}-[0-9]{2})$/);
+      const dataMatch = path.match(new RegExp(`^/api/data/(${DATE_PATTERN.source.slice(1, -1)})$`));
       if (dataMatch && method === 'GET') {
         const date = dataMatch[1];
         return handleGetData(env, request, date);

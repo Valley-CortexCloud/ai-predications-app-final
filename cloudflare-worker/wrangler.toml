@@ -1,11 +1,12 @@
 name = "portfolio-dashboard"
 main = "worker.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2025-01-01"
 
 # Public environment variables (non-sensitive)
 [vars]
 GITHUB_OWNER = "Valley-CortexCloud"
 GITHUB_REPO = "ai-predications-app-final"
+GITHUB_BRANCH = "main"
 
 # Optional: Override default paths if repository structure changes
 # TOKEN_PATH = "data/portfolio/tokens"
