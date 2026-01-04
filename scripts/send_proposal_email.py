@@ -29,7 +29,7 @@ import pandas as pd
 # Configuration
 # ============================================================================
 
-DASHBOARD_BASE_URL = "https://valley-cortexcloud.github.io/ai-predications-app-final/dashboard"
+DASHBOARD_BASE_URL = os.environ.get('DASHBOARD_URL', 'YOUR_CLOUDFLARE_WORKER_URL')
 TOKEN_EXPIRY_HOURS = 24
 
 

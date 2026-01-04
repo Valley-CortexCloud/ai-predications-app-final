@@ -80,6 +80,7 @@ jobs:
         env:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
         run: |
           python scripts/send_proposal_email.py \
             --proposed data/portfolio/proposed_${{ steps.date.outputs.DATE }}.csv \
