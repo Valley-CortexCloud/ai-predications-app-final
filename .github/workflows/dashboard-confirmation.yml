@@ -124,6 +124,9 @@ jobs:
       
       - name: Process CONFIRM action
         if: steps.validate.outputs.valid == 'true' && steps.payload.outputs.action == 'CONFIRM'
+        env:
+          ALPACA_API_KEY: ${{ secrets. ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
         run: |
           echo "🚀 Processing CONFIRM action for ${{ steps.payload.outputs.date }}"
           
@@ -165,11 +168,11 @@ jobs:
           git config --local user.name "github-actions[bot]"
           
           # Force add files that may be ignored by .gitignore
-          git add -f data/portfolio/confirmed_*.csv
-          git add -f data/portfolio/orders_*.json
-          git add -f data/portfolio/fills_*.json
-          git add -f data/portfolio/tokens/*.json
-          git add data/portfolio/tracker.csv
+          git add -f data/portfolio/confirmed_*.csv 2>/dev/null || true
+          git add -f data/portfolio/orders_*.json 2>/dev/null || true
+          git add -f data/portfolio/fills_*. json 2>/dev/null || true
+          git add -f data/portfolio/tokens/*. json 2>/dev/null || true
+          git add data/portfolio/tracker.csv 2>/dev/null || true
           
           if git diff --staged --quiet; then
             echo "No changes to commit"
