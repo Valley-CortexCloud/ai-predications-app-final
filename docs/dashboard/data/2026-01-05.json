@@ -1,50 +1,120 @@
 {
   "date": "2026-01-05",
-  "token": "dqAQtbZoch7ggX5wbIGZU92dhwc7sI6ef4t3K6LNy8w",
-  "generated": "2026-01-02T19:16:30.790958",
-  "expires": "2026-01-03T19:16:30.790963",
-  "turnover_pct": 50.0,
-  "holdings": [
-    {
-      "symbol": "NVDA",
-      "proposed_action": "SELL",
-      "reason": "Sentiment reversal on X (-40% mention sentiment). Technical breakdown below 50-day MA.",
-      "exit_score": 78,
-      "days_held": 45,
-      "pnl_pct": 12.3,
-      "entry_price": 140.5,
-      "current_price": 157.8
-    },
-    {
-      "symbol": "AAPL",
-      "proposed_action": "HOLD",
-      "reason": "Thesis intact. Momentum remains strong. iPhone 16 cycle on track.",
-      "exit_score": 35,
-      "days_held": 30,
-      "pnl_pct": 1.7,
-      "entry_price": 195.2,
-      "current_price": 198.5
-    }
-  ],
+  "token": "ym7XYtuTrAGpqyOPOXQ8LqNe5A4veiLdcGg4UTas6-o",
+  "generated": "2026-01-05T09:25:05.748087",
+  "expires": "2026-01-06T09:25:05.748093",
+  "turnover_pct": 0.0,
+  "holdings": [],
   "recommendations": [
     {
-      "symbol": "TSLA",
+      "symbol": "CRWD",
       "proposed_action": "BUY",
-      "reason": "Strong Buy - EV demand inflection point. Robotaxi catalyst approaching.",
-      "conviction": "Strong Buy",
-      "supercharged_rank": 1
+      "reason": "Fresh signal - Rank #4, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "CPRT",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #6, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "IBKR",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #7, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "CPB",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #8, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "INVH",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #8, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "APH",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #10, Buy",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "DOW",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #12, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "CNP",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #12, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "IP",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #12, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "NI",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #12, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "DXCM",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #14, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "CMG",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #14, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "CNC",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #15, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
     },
     {
       "symbol": "AMD",
       "proposed_action": "BUY",
-      "reason": "Buy - AI chip demand accelerating. Data center strength.",
+      "reason": "Fresh signal - Rank #15, Hold",
       "conviction": "Buy",
-      "supercharged_rank": 2
+      "supercharged_rank": 0
+    },
+    {
+      "symbol": "EIX",
+      "proposed_action": "BUY",
+      "reason": "Fresh signal - Rank #16, Hold",
+      "conviction": "Buy",
+      "supercharged_rank": 0
     }
   ],
   "summary": {
-    "total_sells": 1,
-    "total_buys": 2,
-    "total_holds": 1
+    "total_sells": 0,
+    "total_buys": 15,
+    "total_holds": 0
   }
 }
