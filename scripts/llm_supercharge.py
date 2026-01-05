@@ -124,7 +124,7 @@ def build_user_prompt(symbol: str, rank: int, context: Dict) -> str:
             return "N/A"
         try:
             return f"{float(val) * mult:.{decimals}f}"
-        except:
+        except (ValueError, TypeError):
             return "N/A"
     
     def fmt_pct(val):
@@ -132,7 +132,7 @@ def build_user_prompt(symbol: str, rank: int, context: Dict) -> str:
             return "N/A"
         try:
             return f"{float(val) * 100:+.1f}%"
-        except:
+        except (ValueError, TypeError):
             return "N/A"
     
     return f"""

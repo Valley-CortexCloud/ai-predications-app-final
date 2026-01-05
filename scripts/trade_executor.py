@@ -284,9 +284,9 @@ def submit_to_alpaca(
                 try:
                     quote = client.get_latest_quote(symbol)
                     current_price = float(quote.ask_price)
-                except:
+                except Exception as e:
                     # Fallback to market order if quote unavailable
-                    print(f"   ⚠️ Could not get quote - using market order")
+                    print(f"   ⚠️ Could not get quote - using market order: {str(e)[:50]}")
                     request = MarketOrderRequest(
                         symbol=symbol,
                         notional=order['notional'],
