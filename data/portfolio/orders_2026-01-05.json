@@ -1,0 +1,145 @@
+{
+  "generated_at": "2026-01-05T12:37:43.913792",
+  "mode": "paper",
+  "portfolio_value": 100000.0,
+  "order_count": 15,
+  "sell_count": 0,
+  "buy_count": 15,
+  "orders": [
+    {
+      "symbol": "CRWD",
+      "side": "buy",
+      "type": "market",
+      "notional": 16500.0,
+      "time_in_force": "day",
+      "conviction": "Buy",
+      "reason": "Fresh signal - Rank #4, Buy"
+    },
+    {
+      "symbol": "CPRT",
+      "side": "buy",
+      "type": "market",
+      "notional": 16500.0,
+      "time_in_force": "day",
+      "conviction": "Buy",
+      "reason": "Fresh signal - Rank #6, Buy"
+    },
+    {
+      "symbol": "IBKR",
+      "side": "buy",
+      "type": "market",
+      "notional": 16500.0,
+      "time_in_force": "day",
+      "conviction": "Buy",
+      "reason": "Fresh signal - Rank #7, Buy"
+    },
+    {
+      "symbol": "CPB",
+      "side": "buy",
+      "type": "market",
+      "notional": 16500.0,
+      "time_in_force": "day",
+      "conviction": "Buy",
+      "reason": "Fresh signal - Rank #8, Buy"
+    },
+    {
+      "symbol": "INVH",
+      "side": "buy",
+      "type": "market",
+      "notional": 16500.0,
+      "time_in_force": "day",
+      "conviction": "Buy",
+      "reason": "Fresh signal - Rank #8, Buy"
+    },
+    {
+      "symbol": "APH",
+      "side": "buy",
+      "type": "market",
+      "notional": 16500.0,
+      "time_in_force": "day",
+      "conviction": "Buy",
+      "reason": "Fresh signal - Rank #10, Buy"
+    },
+    {
+      "symbol": "DOW",
+      "side": "buy",
+      "type": "market",
+      "notional": 12000.0,
+      "time_in_force": "day",
+      "conviction": "Hold",
+      "reason": "Fresh signal - Rank #12, Hold"
+    },
+    {
+      "symbol": "CNP",
+      "side": "buy",
+      "type": "market",
+      "notional": 12000.0,
+      "time_in_force": "day",
+      "conviction": "Hold",
+      "reason": "Fresh signal - Rank #12, Hold"
+    },
+    {
+      "symbol": "IP",
+      "side": "buy",
+      "type": "market",
+      "notional": 12000.0,
+      "time_in_force": "day",
+      "conviction": "Hold",
+      "reason": "Fresh signal - Rank #12, Hold"
+    },
+    {
+      "symbol": "NI",
+      "side": "buy",
+      "type": "market",
+      "notional": 12000.0,
+      "time_in_force": "day",
+      "conviction": "Hold",
+      "reason": "Fresh signal - Rank #12, Hold"
+    },
+    {
+      "symbol": "DXCM",
+      "side": "buy",
+      "type": "market",
+      "notional": 12000.0,
+      "time_in_force": "day",
+      "conviction": "Hold",
+      "reason": "Fresh signal - Rank #14, Hold"
+    },
+    {
+      "symbol": "CMG",
+      "side": "buy",
+      "type": "market",
+      "notional": 12000.0,
+      "time_in_force": "day",
+      "conviction": "Hold",
+      "reason": "Fresh signal - Rank #14, Hold"
+    },
+    {
+      "symbol": "CNC",
+      "side": "buy",
+      "type": "market",
+      "notional": 12000.0,
+      "time_in_force": "day",
+      "conviction": "Hold",
+      "reason": "Fresh signal - Rank #15, Hold"
+    },
+    {
+      "symbol": "AMD",
+      "side": "buy",
+      "type": "market",
+      "notional": 12000.0,
+      "time_in_force": "day",
+      "conviction": "Hold",
+      "reason": "Fresh signal - Rank #15, Hold"
+    },
+    {
+      "symbol": "EIX",
+      "side": "buy",
+      "type": "market",
+      "notional": 12000.0,
+      "time_in_force": "day",
+      "conviction": "Hold",
+      "reason": "Fresh signal - Rank #16, Hold"
+    }
+  ]
+}
