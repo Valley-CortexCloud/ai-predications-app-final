@@ -15,11 +15,13 @@ Usage:
 import argparse
 import json
 import sys
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
+import pytz
 
 
 # ============================================================================
@@ -27,6 +29,11 @@ import pandas as pd
 # ============================================================================
 
 MAX_POSITION_SIZE = 0.15  # 15% max per name
+
+# Delayed entry configuration for optimal execution
+MARKET_OPEN_DELAY_MINUTES = 35  # Wait 35 minutes after market open
+MARKET_OPEN_TIME = "09:30"  # ET
+MARKET_TIMEZONE = "America/New_York"
 
 CONVICTION_MULTIPLIERS = {
     'Strong Buy': 1.4,
@@ -180,6 +187,41 @@ def save_orders_json(order_spec: Dict, output_dir: Path, date_str: Optional[str]
 
 
 # ============================================================================
+# Optimal Entry Timing
+# ============================================================================
+
+def wait_for_optimal_entry():
+    """Wait until optimal entry time (35 min after market open)
+    
+    The first 30 minutes of trading have:
+    - 2-3x wider bid-ask spreads
+    - Higher volatility (opening auction effects)
+    - Institutional order flow that can move prices against retail
+    - Average slippage of 0.3-0.5% vs 0.1-0.2% later in day
+    
+    Optimal entry window: 30-60 minutes after market open (9:30 AM → 10:00-10:30 AM ET)
+    """
+    et = pytz.timezone(MARKET_TIMEZONE)
+    now = datetime.now(et)
+    
+    # Calculate today's optimal entry time
+    market_open = now.replace(
+        hour=9, minute=30, second=0, microsecond=0
+    )
+    optimal_entry = market_open + timedelta(minutes=MARKET_OPEN_DELAY_MINUTES)
+    
+    # If we're before optimal entry, wait
+    if now < optimal_entry:
+        wait_seconds = (optimal_entry - now).total_seconds()
+        print(f"⏰ Waiting {wait_seconds/60:.1f} minutes for optimal entry time ({optimal_entry.strftime('%H:%M')} ET)")
+        print(f"   Reason: First 30 min have 2-3x wider spreads and higher volatility")
+        time.sleep(wait_seconds)
+        print(f"✅ Optimal entry window reached - executing trades")
+    else:
+        print(f"✅ Already past optimal entry time ({optimal_entry.strftime('%H:%M')} ET) - executing immediately")
+
+
+# ============================================================================
 # Alpaca Submission (V2)
 # ============================================================================
 
@@ -190,7 +232,12 @@ def submit_to_alpaca(
     paper: bool = True
 ) -> List[Dict]:
     """
-    Submit orders to Alpaca API
+    Submit orders to Alpaca API with optimal timing and smart order types
+    
+    Uses:
+    - Delayed entry (35 min after open) for better execution
+    - Limit orders for buys (with small buffer for high fill probability)
+    - Market orders for sells (want certainty of fill)
     
     Requires alpaca-py package
     
@@ -205,6 +252,9 @@ def submit_to_alpaca(
             "alpaca-py not installed. Run: pip install alpaca-py>=0.21.0"
         )
     
+    # Wait for optimal entry window
+    wait_for_optimal_entry()
+    
     print(f"\n🔌 Connecting to Alpaca {'Paper' if paper else 'Live'} API...")
     
     client = TradingClient(api_key, api_secret, paper=paper)
@@ -213,6 +263,11 @@ def submit_to_alpaca(
     account = client.get_account()
     print(f"✅ Connected - Account: {account.account_number}")
     print(f"   Buying Power: ${float(account.buying_power):,.2f}")
+    
+    # Verify market is open
+    clock = client.get_clock()
+    if not clock.is_open:
+        print("⚠️ Market is closed - orders will be queued for next open")
     
     fills = []
     
@@ -223,22 +278,62 @@ def submit_to_alpaca(
         print(f"\n📝 Submitting {order['side'].upper()} {symbol}...")
         
         try:
-            if order['side'] == 'sell':
-                # Market sell with qty
+            if order['side'] == 'buy':
+                # Use limit order with small buffer for better execution
+                # Get current price
+                try:
+                    quote = client.get_latest_quote(symbol)
+                    current_price = float(quote.ask_price)
+                except:
+                    # Fallback to market order if quote unavailable
+                    print(f"   ⚠️ Could not get quote - using market order")
+                    request = MarketOrderRequest(
+                        symbol=symbol,
+                        notional=order['notional'],
+                        side=side,
+                        time_in_force=TimeInForce.DAY
+                    )
+                    alpaca_order = client.submit_order(request)
+                    fills.append({
+                        'symbol': symbol,
+                        'side': order['side'],
+                        'order_id': str(alpaca_order.id),
+                        'status': alpaca_order.status.value,
+                        'submitted_at': alpaca_order.submitted_at.isoformat() if alpaca_order.submitted_at else None,
+                        'notional': order.get('notional'),
+                        'reason': order.get('reason', '')
+                    })
+                    print(f"   ✅ Market order submitted - ID: {alpaca_order.id}")
+                    time.sleep(0.5)
+                    continue
+                
+                # Set limit 0.3% above ask for high fill probability
+                limit_price = round(current_price * 1.003, 2)
+                
+                # Calculate shares from notional
+                shares = int(order['notional'] / current_price)
+                
+                if shares > 0:
+                    request = LimitOrderRequest(
+                        symbol=symbol,
+                        qty=shares,
+                        side=side,
+                        time_in_force=TimeInForce.DAY,
+                        limit_price=limit_price
+                    )
+                    print(f"   📝 Limit BUY {shares} shares @ ${limit_price:.2f}")
+                else:
+                    print(f"   ⚠️ Notional too small for full shares - skipping")
+                    continue
+            else:
+                # Market sell for exits (want certainty of fill)
                 request = MarketOrderRequest(
                     symbol=symbol,
                     qty=order['qty'],
                     side=side,
                     time_in_force=TimeInForce.DAY
                 )
-            else:
-                # Market buy with notional (fractional shares)
-                request = MarketOrderRequest(
-                    symbol=symbol,
-                    notional=order['notional'],
-                    side=side,
-                    time_in_force=TimeInForce.DAY
-                )
+                print(f"   📝 Market SELL {order['qty']} shares")
             
             # Submit order
             alpaca_order = client.submit_order(request)
@@ -249,14 +344,17 @@ def submit_to_alpaca(
                 'order_id': str(alpaca_order.id),
                 'status': alpaca_order.status.value,
                 'submitted_at': alpaca_order.submitted_at.isoformat() if alpaca_order.submitted_at else None,
-                'qty': order.get('qty'),
-                'notional': order.get('notional'),
+                'qty': order.get('qty') if order['side'] == 'sell' else shares if order['side'] == 'buy' else None,
+                'limit_price': limit_price if order['side'] == 'buy' else None,
                 'reason': order.get('reason', '')
             }
             
             fills.append(fill)
             print(f"   ✅ Order submitted - ID: {alpaca_order.id}")
             print(f"   Status: {alpaca_order.status.value}")
+            
+            # Small delay between orders to avoid rate limits
+            time.sleep(0.5)
             
         except Exception as e:
             print(f"   ❌ Error: {e}")
