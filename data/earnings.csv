@@ -5039,6 +5039,8 @@ PCTY,2025-02-06,2025-02-07,yahoo,actual,unknown,0.66,0.76,-12.66
 PCTY,2025-05-01,2025-05-02,yahoo,actual,unknown,2.43,2.12,14.8
 PCTY,2025-08-05,2025-08-06,yahoo,actual,unknown,0.86,0.75,14.86
 PCTY,2025-11-04,2025-11-05,yahoo,actual,unknown,1.75,1.57,11.3
+PDD,2025-08-25,2025-08-26,yahoo,actual,unknown,22.07,14.8,49.13
+PDD,2025-11-18,2025-11-19,yahoo,actual,unknown,21.08,16.57,27.22
 PEG,2024-02-26,2024-02-27,yahoo,actual,unknown,0.54,0.52,3.74
 PEG,2024-04-30,2024-05-01,yahoo,actual,unknown,1.31,1.32,-0.68
 PEG,2024-07-30,2024-07-31,yahoo,actual,unknown,0.63,0.62,1.04
