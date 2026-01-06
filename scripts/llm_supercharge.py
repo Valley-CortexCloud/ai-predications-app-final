@@ -12,6 +12,10 @@ import time
 try:
     from realtime_data import fetch_realtime_data, format_technical_data, print_data_validation
     from sentiment_analyzer import fetch_and_analyze_sentiment, format_sentiment_data, print_sentiment_validation
+    from enhanced_context import (
+        fetch_earnings_context, fetch_valuation_data, fetch_recent_news, get_stock_features,
+        _rsi_flag, _vol_flag, _earnings_flag, _format_market_cap, _format_news
+    )
     REALTIME_ENABLED = True
 except ImportError:
     REALTIME_ENABLED = False
@@ -40,69 +44,169 @@ stocks = df.head(20).reset_index(drop=True)
 print(f"🚀 Supercharging {len(stocks)} stocks (ELITE mode, parallel)...\n")
 
 # ============================================================================
-# ELITE HALLUCINATION GUARD (NO COMPROMISE)
+# Load Features for Rich Context
 # ============================================================================
-hallucination_guard = """
-HALLUCINATION PREVENTION (CRITICAL):
-- You have NO access to live options flow, block trades, insider filings, or earnings calendars. 
-- NEVER mention "unusual options activity", "gamma squeeze", "block trade", or "insider buying/selling".
-- Sentiment evidence MUST reference observable X patterns only (e.g., "mention volume +120% vs 30d avg", "shift from retail greed to fear").
-- If no clear X signal → say "neutral / limited real-time visibility". 
-- Flag unconfirmed catalysts explicitly:  "potential (unconfirmed)". 
-- Never cite specific unreported future events or dates.
-- Your edge is logic + pattern recognition — not fabricating news.
+features_files = sorted(glob.glob("datasets/features_*.parquet"), reverse=True)
+if not features_files:
+    # Try data_cache location as fallback
+    features_files = sorted(glob.glob("data_cache/**/features_*.parquet", recursive=True), reverse=True)
+
+if features_files:
+    try:
+        features_df = pd.read_parquet(features_files[0])
+        print(f"📊 Loaded features from: {features_files[0]}")
+        print(f"   Features shape: {features_df.shape}")
+        FEATURES_AVAILABLE = True
+    except Exception as e:
+        features_df = None
+        FEATURES_AVAILABLE = False
+        print(f"⚠️ Failed to load features file: {e}")
+else:
+    features_df = None
+    FEATURES_AVAILABLE = False
+    print("⚠️ No features file found - using limited context")
+
+# ============================================================================
+# ELITE SYSTEM PROMPT (RESEARCH-OPTIMIZED FOR QUANT FUND PM)
+# ============================================================================
+ELITE_SYSTEM_PROMPT = """You are an elite quantitative portfolio manager at a $50B systematic hedge fund. Your edge comes from combining:
+1. Rigorous quantitative signals (provided in the data section)
+2. Real-time market intelligence
+3. Asymmetric risk/reward identification
+
+INVESTMENT MANDATE:
+- Horizon: 63 trading days (3 months)
+- Strategy: Momentum + Quality + Low Volatility factor tilt
+- Universe: S&P 500 constituents
+- Objective: Identify stocks with highest risk-adjusted alpha potential
+
+YOUR TASK:
+For the stock below, analyze ALL provided data to:
+1. VALIDATE: Does the quantitative data support the model's ranking?
+2. IDENTIFY: Are there any dislocations between model signals and real-time data?
+3. ASSESS: Is the risk/reward asymmetric (upside > downside)?
+4. DECIDE: Final conviction based on EVIDENCE from the provided data
+
+CRITICAL RULES (STRICT COMPLIANCE):
+- You MUST cite specific numbers from the provided data in your reasoning
+- Default to HOLD unless clear asymmetric opportunity exists
+- Earnings within 7 days = REDUCE conviction (binary event risk)
+- Volume z-score > 2 required for breakout conviction upgrade
+- RSI < 30 with positive momentum = potential mean reversion opportunity
+- Never fabricate data points - use ONLY what's provided
+- If data is missing, state "data unavailable" rather than guessing
+
+CONVICTION FRAMEWORK:
+- Strong Buy: Clear catalyst + technical setup + momentum alignment + capped downside + volume confirmation
+- Buy: Positive factors outweigh risks, favorable entry point, reasonable risk/reward
+- Hold: Mixed signals, no clear edge, fair value
+- Avoid: Deteriorating fundamentals, broken technicals, or excessive binary risk
+
+HALLUCINATION PREVENTION:
+- NO access to options flow, insider transactions, or block trades
+- Do NOT mention "unusual options activity", "dark pool", "gamma squeeze"
+- Sentiment claims MUST reference the provided StockTwits data or state "limited visibility"
+- News claims MUST reference the provided headlines or state "no recent news"
+
+Output strict JSON with evidence-backed analysis."""
+
+system_prompt = ELITE_SYSTEM_PROMPT
+
+# ============================================================================
+# Rich User Prompt Builder
+# ============================================================================
+def build_user_prompt(symbol: str, rank: int, context: Dict) -> str:
+    """Build the user prompt with rich structured data"""
+    
+    # Helper to safely format values
+    def fmt(val, decimals=2, mult=1):
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return "N/A"
+        try:
+            return f"{float(val) * mult:.{decimals}f}"
+        except (ValueError, TypeError):
+            return "N/A"
+    
+    def fmt_pct(val):
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return "N/A"
+        try:
+            return f"{float(val) * 100:+.1f}%"
+        except (ValueError, TypeError):
+            return "N/A"
+    
+    return f"""
+═══════════════════════════════════════════════════════════════════════════════
+STOCK ANALYSIS REQUEST: {symbol} | QUANT MODEL RANK: #{rank}/20
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 QUANTITATIVE MODEL SIGNALS (why this stock ranked #{rank}):
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ MOMENTUM FACTORS                                                            │
+│   • 12-month return (skip 1m): {fmt_pct(context.get('mom_12m_skip1m'))}    │
+│   • 63-day return: {fmt_pct(context.get('ret_63d'))}                       │
+│   • Sector relative (63d): {fmt_pct(context.get('sector_rel_ret_63d'))}    │
+│                                                                             │
+│ VOLATILITY & RISK FACTORS                                                   │
+│   • Idiosyncratic volatility (63d): {fmt(context.get('idio_vol_63'), 4)}   │
+│   • Beta to SPY (126d): {fmt(context.get('beta_spy_126'), 2)}              │
+│   • 20-day volatility: {fmt_pct(context.get('volatility_20'))}             │
+│   • Defensive score: {fmt(context.get('defensive_score'), 2)}              │
+│                                                                             │
+│ TECHNICAL INDICATORS                                                        │
+│   • RSI(14): {fmt(context.get('rsi'), 1)} {_rsi_flag(context.get('rsi'))}  │
+│   • Breakout strength (20d): {fmt(context.get('breakout_strength_20d'), 2)}│
+│   • Volume z-score (60d): {fmt(context.get('rvol_z_60'), 2)} {_vol_flag(context.get('rvol_z_60'))}
+│   • Price vs 50-SMA: {context.get('pct_vs_sma50', 'N/A')}                  │
+│   • Price vs 200-SMA: {context.get('pct_vs_sma200', 'N/A')}                │
+│   • 52-week range position: {context.get('pct_52w_range', 'N/A')}          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+📈 EARNINGS INTELLIGENCE:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│   • Next earnings date: {context.get('next_earnings_date', 'Unknown')}     │
+│   • Days until earnings: {context.get('days_to_earnings', 'N/A')} {_earnings_flag(context.get('days_to_earnings'))}
+│   • Last earnings surprise: {fmt(context.get('last_surprise_pct'), 1) + '%' if context.get('last_surprise_pct') else 'N/A'}
+│   • Surprise streak: {context.get('surprise_streak', 'N/A')}               │
+│   • Next Q EPS estimate: {context.get('eps_estimate_next_q', 'N/A')}       │
+│   • Estimate revisions (90d): {context.get('estimate_revision_90d', 'N/A')}│
+│   • Earnings quality score: {fmt(context.get('earnings_quality'), 1)}      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+💰 VALUATION CONTEXT:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│   • P/E (TTM): {fmt(context.get('pe_ttm'), 1) if context.get('pe_ttm') else 'N/A'}
+│   • P/S (TTM): {fmt(context.get('ps_ttm'), 2) if context.get('ps_ttm') else 'N/A'}
+│   • Market Cap: {_format_market_cap(context.get('market_cap'))}            │
+│   • Analyst Rating: {context.get('analyst_rating', 'N/A')}                 │
+│   • Price Target: {'$' + fmt(context.get('price_target'), 2) if context.get('price_target') else 'N/A'}
+│   • Distance to Target: {fmt(context.get('pct_to_target'), 1) + '%' if context.get('pct_to_target') else 'N/A'}
+└─────────────────────────────────────────────────────────────────────────────┘
+
+📰 RECENT NEWS (Last 7 Days):
+┌─────────────────────────────────────────────────────────────────────────────┐
+{_format_news(context.get('recent_news', []))}
+└─────────────────────────────────────────────────────────────────────────────┘
+
+🌡️ SENTIMENT SNAPSHOT:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│   • StockTwits: {context.get('sentiment_label', 'N/A')} (score: {context.get('sentiment_score', 0):+.2f})
+│   • Messages analyzed: {context.get('sentiment_total', 0)} ({context.get('sentiment_bullish', 0)} bullish, {context.get('sentiment_bearish', 0)} bearish)
+│   • Confidence: {context.get('sentiment_confidence', 'LOW')}               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+🏛️ MACRO REGIME:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│   • VIX Regime: {context.get('vix_regime', 'UNKNOWN')} VOLATILITY (z-score: {fmt(context.get('vix_z'), 2)})
+│   • Market Condition: {'Risk-Off' if context.get('vix_z', 0) > 1 else 'Risk-On' if context.get('vix_z', 0) < -0.5 else 'Neutral'}
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+ANALYSIS REQUEST:
+Based on ALL the data above, provide your assessment. You MUST reference 
+specific data points in your reasoning. Output as strict JSON.
+═══════════════════════════════════════════════════════════════════════════════
 """
-
-realtime_data_directive = """
-CRITICAL: Real-time market data is provided above for this stock.
-- Use ONLY the provided price/technical data - do not estimate or recall from training data
-- All technical indicators (RSI, MACD, ATR, etc.) are computed from live data - trust these values
-- Sentiment data from StockTwits is provided; you may search X/Twitter to supplement this data
-- If data appears stale (>1 day old), note this in your analysis
-- All numerical claims about current price, technicals, and volume MUST match the provided data
-"""
-
-# ============================================================================
-# ELITE SYSTEM PROMPT (FULL POWER)
-# ============================================================================
-system_prompt = """You are Grok 4 Frontier, the world's most truth-seeking, asymmetric-alpha-hunting quant hedge fund PM with 30+ years crushing markets. Your sole mission: generate massive risk-adjusted excess returns over the next 63 trading days by identifying mispriced opportunities others miss.
-
-Rules (OBEY STRICTLY):
-- Think step-by-step internally for THIS stock (Chain-of-Thought — do not output reasoning).
-- Be brutally honest:  call out overvaluation, hidden risks, or lack of edge — no hedging, no fluff.
-- Prioritize asymmetric setups:  high conviction only when downside is capped and upside is uncapped.
-- Base claims on real-time X sentiment shifts, valuation vs fundamentals, and technical structure.
-- Supercharged_rank:  your final 1-20 ranking (1 = highest expected 63-day risk-adjusted alpha).
-
-""" + hallucination_guard + """
-
-""" + realtime_data_directive + """
-
-For this stock: 
-1.  Recall original quant signals (low vol, earnings momentum, quality).
-2. Detect real-time sentiment dislocation on X (require evidence or state neutral).
-3. Evaluate moat durability, growth inflection points, existential risks.
-4. Identify high-probability technical setups (breakouts, bases, RS leadership).
-5. Quantify 63-day excess return potential with clear logical driver. 
-6. Assign conviction based on true asymmetric edge (risk/reward).
-
-Output EXCLUSIVELY valid JSON — no markdown, no wrappers, no extra text. 
-
-Required keys (EXACT):
-- rank: int (original 1-20 rank)
-- symbol: str
-- predicted_excess:  str (e.g., "+18-28% over 63 days:  AI capex re-acceleration undervalued by street")
-- sentiment:  str ("bullish"/"bearish"/"neutral" + 1-2 sentence evidence OR "limited real-time visibility")
-- fundamental_edge: str (moat strength, growth catalysts, existential risks — brutally honest, 2-3 sentences)
-- technical_outlook: str (key patterns, support/resistance levels, momentum signals, volume confirmation)
-- conviction:  str ("Strong Buy"/"Buy"/"Hold"/"Avoid")
-- supercharged_rank: int (1-20, your final ranking where 1 = best asymmetric opportunity)
-- data_confidence: str ("high"/"medium"/"low" — based on real-time data availability)
-
-Example output:
-{"rank": 3,"symbol":"AMAT","predicted_excess": "+22-35% over 63 days: AI chip fab capex inflection underpriced vs TSMC guidance raise","sentiment":"bullish (X mention volume +180% vs 30d avg, institutional accumulation tone dominant per engagement metrics)","fundamental_edge":"Oligopoly moat in wafer fab equipment (3-player market:  AMAT/LRCX/TEL). AI chip transition (N3→N2) drives 18-24mo capex supercycle. Risk:  China export controls (10% revenue exposure).","technical_outlook":"Cup-with-handle breakout above $185 on 2. 3x avg volume. RSI(14)=58 (room to run). Support at $175 (21 EMA). Target $235 (+27%).","conviction":"Strong Buy","supercharged_rank":1,"data_confidence":"high"}
-
-Now analyze THIS stock for maximum 63-day alpha."""
 
 # ============================================================================
 # Single Stock Analysis (ELITE PROMPT, WITH RETRY + REAL-TIME DATA)
@@ -110,42 +214,76 @@ Now analyze THIS stock for maximum 63-day alpha."""
 def analyze_stock(idx, symbol, original_rank, max_retries=2):
     """Analyze one stock with full elite prompt, real-time data, and retry logic"""
     
-    # Fetch real-time data if enabled
-    realtime_data = None
-    sentiment_data = None
+    # Build rich context from all available sources
+    context = {}
     
+    # Get quantitative features from parquet file
+    if REALTIME_ENABLED and FEATURES_AVAILABLE and features_df is not None:
+        try:
+            quant_features = get_stock_features(symbol, features_df)
+            context.update(quant_features)
+        except Exception as e:
+            print(f"  ⚠️  {symbol}: Failed to load features - {str(e)[:60]}")
+    
+    # Get real-time technical data
     if REALTIME_ENABLED:
         try:
             realtime_data = fetch_realtime_data(symbol)
-            sentiment_data = fetch_and_analyze_sentiment(symbol)
+            if realtime_data:
+                context.update({
+                    'price': realtime_data['price'],
+                    'pct_vs_sma50': f"{((realtime_data['price'] / realtime_data['sma50']) - 1) * 100:+.1f}%" if realtime_data.get('sma50') else 'N/A',
+                    'pct_vs_sma200': f"{((realtime_data['price'] / realtime_data['sma200']) - 1) * 100:+.1f}%" if realtime_data.get('sma200') else 'N/A',
+                    'pct_52w_range': f"{realtime_data.get('pct_from_52w_high', 0):.1f}%" if realtime_data.get('pct_from_52w_high') else 'N/A',
+                })
+                # Override RSI from realtime if available
+                if realtime_data.get('rsi'):
+                    context['rsi'] = realtime_data['rsi']
         except Exception as e:
             print(f"  ⚠️  {symbol}: Real-time data fetch error - {str(e)[:60]}")
     
-    # Build user prompt with real-time data
-    user_prompt_parts = []
+    # Get sentiment data
+    if REALTIME_ENABLED:
+        try:
+            sentiment = fetch_and_analyze_sentiment(symbol)
+            if sentiment:
+                context.update({
+                    'sentiment_score': sentiment['score'],
+                    'sentiment_label': sentiment['label'],
+                    'sentiment_confidence': sentiment['confidence'],
+                    'sentiment_bullish': sentiment['breakdown'].get('stocktwits', {}).get('bullish', 0) if sentiment['breakdown'].get('stocktwits') else 0,
+                    'sentiment_bearish': sentiment['breakdown'].get('stocktwits', {}).get('bearish', 0) if sentiment['breakdown'].get('stocktwits') else 0,
+                    'sentiment_total': sentiment['breakdown'].get('stocktwits', {}).get('total', 0) if sentiment['breakdown'].get('stocktwits') else 0,
+                })
+        except Exception as e:
+            print(f"  ⚠️  {symbol}: Sentiment fetch error - {str(e)[:60]}")
     
-    # Add real-time technical data if available
-    if realtime_data:
-        user_prompt_parts.append(format_technical_data(realtime_data))
+    # Get earnings context
+    if REALTIME_ENABLED:
+        try:
+            earnings_ctx = fetch_earnings_context(symbol)
+            context.update(earnings_ctx)
+        except Exception as e:
+            print(f"  ⚠️  {symbol}: Earnings context error - {str(e)[:60]}")
     
-    # Add sentiment data if available
-    if sentiment_data:
-        user_prompt_parts.append(format_sentiment_data(sentiment_data))
+    # Get valuation data
+    if REALTIME_ENABLED:
+        try:
+            valuation = fetch_valuation_data(symbol)
+            context.update(valuation)
+        except Exception as e:
+            print(f"  ⚠️  {symbol}: Valuation data error - {str(e)[:60]}")
     
-    # Add base context
-    base_context = f"""Stock to analyze: 
-Symbol: {symbol}
-Original Quant Rank: #{original_rank} (out of 20)
-
-Context: This stock was ranked #{original_rank} by our 120-feature quant model based on:
-- Low volatility + earnings quality signals
-- 12-month momentum + sector rotation
-- Risk-adjusted returns + technical breakouts
-
-Your mission:  Supercharge this ranking using real-time intelligence and asymmetric opportunity identification for 63-day horizon."""
+    # Get recent news
+    if REALTIME_ENABLED:
+        try:
+            context['recent_news'] = fetch_recent_news(symbol)
+        except Exception as e:
+            context['recent_news'] = []
+            print(f"  ⚠️  {symbol}: News fetch error - {str(e)[:60]}")
     
-    user_prompt_parts.append(base_context)
-    user_prompt = "\n\n".join(user_prompt_parts)
+    # Build user prompt with rich context
+    user_prompt = build_user_prompt(symbol, original_rank, context)
     
     for attempt in range(max_retries + 1):
         try:
