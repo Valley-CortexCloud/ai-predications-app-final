@@ -6377,6 +6377,8 @@ TRGP,2025-02-20,2025-02-21,yahoo,actual,unknown,1.82,1.83,-0.65
 TRGP,2025-05-01,2025-05-02,yahoo,actual,unknown,1.89,2.04,-7.56
 TRGP,2025-08-07,2025-08-08,yahoo,actual,unknown,2.02,1.98,2.2
 TRGP,2025-11-05,2025-11-06,yahoo,actual,unknown,2.2,2.13,3.06
+TRI,2025-08-06,2025-08-07,yahoo,actual,unknown,0.87,0.83,4.55
+TRI,2025-11-04,2025-11-05,yahoo,actual,unknown,0.94,0.71,32.82
 TRMB,2024-02-12,2024-02-13,yahoo,actual,unknown,0.63,0.6,5.77
 TRMB,2024-05-03,2024-05-06,yahoo,actual,unknown,0.64,0.6,6.7
 TRMB,2024-08-06,2024-08-07,yahoo,actual,unknown,0.62,0.58,6.56
