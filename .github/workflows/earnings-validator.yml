@@ -13,7 +13,7 @@ on:
         default: '6'
 
 permissions:
-  contents: read
+  contents: write  # Changed from 'read' to 'write' for committing
 
 jobs:
   validate:
@@ -47,12 +47,35 @@ jobs:
           echo "stale_count=$STALE_COUNT" >> $GITHUB_OUTPUT
           echo "📊 Found $STALE_COUNT stale tickers"
       
-      - name: Upload stale tickers list
-        uses: actions/upload-artifact@v4
-        with:
-          name: stale-tickers
-          path: stale_tickers.txt
-          retention-days: 7
+      - name: Commit stale tickers list to repo
+        run: |
+          if [ -s stale_tickers.txt ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            
+            # Create cache directory if it doesn't exist
+            mkdir -p data/cache
+            
+            # Move stale tickers to cache directory
+            cp stale_tickers.txt data/cache/stale_tickers.txt
+            
+            # Add timestamp for debugging
+            echo "# Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > data/cache/stale_tickers_metadata.txt
+            echo "# Stale count: ${{ steps.validate.outputs.stale_count }}" >> data/cache/stale_tickers_metadata.txt
+            echo "# Stale threshold: ${{ inputs.stale_days || '90' }} days" >> data/cache/stale_tickers_metadata.txt
+            
+            git add data/cache/stale_tickers.txt data/cache/stale_tickers_metadata.txt
+            
+            if ! git diff --staged --quiet; then
+              git commit -m "chore: update stale tickers list (${{ steps.validate.outputs.stale_count }} tickers)"
+              git push
+              echo "✅ Committed stale tickers list to data/cache/"
+            else
+              echo "ℹ️ No changes to stale tickers list"
+            fi
+          else
+            echo "⚠️ No stale tickers found - nothing to commit"
+          fi
       
       - name: Summary
         run: |
