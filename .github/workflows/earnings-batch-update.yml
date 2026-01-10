@@ -46,26 +46,32 @@ jobs:
           pip install -r requirements.txt
           pip install --upgrade yfinance requests-cache
       
-      - name: Download stale tickers artifact (if available)
-        if: ${{ inputs.use_stale_list != false }}
-        uses: dawidd6/action-download-artifact@v3
-        with:
-          name: stale-tickers
-          workflow: earnings-validator.yml
-          if_no_artifact_found: warn
-        continue-on-error: true
-      
       - name: Determine batch mode
         id: mode
         run: |
-          if [ -f stale_tickers.txt ] && [ -s stale_tickers.txt ]; then
+          STALE_FILE="data/cache/stale_tickers.txt"
+          
+          if [ "${{ inputs.use_stale_list }}" == "false" ]; then
+            echo "mode=random" >> $GITHUB_OUTPUT
+            echo "🎲 Stale list disabled - using random sample"
+          elif [ -f "$STALE_FILE" ] && [ -s "$STALE_FILE" ]; then
+            # Copy to working directory for the update script
+            cp "$STALE_FILE" stale_tickers.txt
+            
             echo "mode=stale" >> $GITHUB_OUTPUT
-            echo "📋 Using stale tickers list"
             TOTAL=$(wc -l < stale_tickers.txt | tr -d ' ')
             echo "total_stale=$TOTAL" >> $GITHUB_OUTPUT
+            echo "📋 Using stale tickers list from repo ($TOTAL tickers)"
+            
+            # Show metadata if available
+            if [ -f "data/cache/stale_tickers_metadata.txt" ]; then
+              echo "📊 Metadata:"
+              cat data/cache/stale_tickers_metadata.txt
+            fi
           else
             echo "mode=random" >> $GITHUB_OUTPUT
-            echo "🎲 No stale list - using random sample for daily refresh"
+            echo "🎲 No stale list found in repo - using random sample for daily refresh"
+            echo "   (Run earnings-validator.yml to generate stale list)"
           fi
       
       - name: Run batch update
